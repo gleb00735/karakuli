@@ -54,13 +54,16 @@ export const icons = {
   crown: '<svg viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="#ffc23d" stroke="#d99a12" stroke-width="1.5" stroke-linejoin="round"/></svg>',
   home: I('<path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/>'),
   replay: I('<path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.6"/><path d="M4 4v4.6h4.6"/>'),
+  mic: I('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'),
+  micOff: I('<path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.7 2.5"/><path d="M5 11a7 7 0 0 0 11.3 5.5M19 11a7 7 0 0 1-.6 2.8M12 18v3M4 4l16 16"/>'),
+  headphones: I('<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="5" height="7" rx="2"/><rect x="16" y="14" width="5" height="7" rx="2"/>'),
 };
 export const icon = (name) => svg(icons[name]);
 
 const AVA_COLORS = ['#7a5cff', '#ff5d5d', '#22c3a6', '#3fa7ff', '#ff9f43', '#e056fd', '#10ac84', '#f368e0'];
 
 export function avatar(p, { size, badge, off } = {}) {
-  const el = h('div.ava', { style: { '--av': AVA_COLORS[Math.abs(p.id) % AVA_COLORS.length], ...(size ? { '--s': size + 'px' } : {}) } });
+  const el = h('div.ava', { 'data-uid': p.id, style: { '--av': AVA_COLORS[Math.abs(p.id) % AVA_COLORS.length], ...(size ? { '--s': size + 'px' } : {}) } });
   el.textContent = (p.name || '?').trim().charAt(0).toUpperCase();
   if (p.photo) {
     const img = h('img', { src: p.photo, alt: '', referrerpolicy: 'no-referrer' });

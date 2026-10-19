@@ -298,6 +298,7 @@ async function cleanupOld() {
 }
 
 async function purgeLobby(id) {
+  await exec('DELETE FROM signals WHERE lobby_id = :id', { id });
   await exec('DELETE FROM strokes WHERE lobby_id = :id', { id });
   await exec('DELETE FROM messages WHERE lobby_id = :id', { id });
   await exec('DELETE FROM players WHERE lobby_id = :id', { id });
@@ -455,6 +456,46 @@ export async function guess(user, code, text) {
   return { result: 'wrong' };
 }
 
+// ─── Голосовой чат ─────────────────────────────────────────────────────────
+
+const SIGNAL_KINDS = ['offer', 'answer', 'hello', 'bye'];
+const MAX_SIGNAL = 16_000;
+const SIGNAL_TTL_MS = 120_000;
+
+export async function setVoice(user, code, voice) {
+  const v = [0, 1, 2].includes(voice) ? voice : 0;
+  const lobby = await loadLobby(code);
+  if (!lobby) fail('NOT_FOUND', 'Комната закрыта');
+  const res = await exec('UPDATE players SET voice = :v, last_seen = :t WHERE lobby_id = :id AND user_id = :u', { v, t: now(), id: lobby.id, u: user.id });
+  if (!res.rowsAffected) fail('NOT_IN_LOBBY', 'Вы не в этой комнате');
+}
+
+export async function pushSignals(lobby, players, user, list) {
+  if (!Array.isArray(list) || !list.length) return;
+  const t = now();
+  await exec('DELETE FROM signals WHERE lobby_id = :id AND created_at < :cut', { id: lobby.id, cut: t - SIGNAL_TTL_MS });
+  for (const sg of list.slice(0, 8)) {
+    if (!sg || !SIGNAL_KINDS.includes(sg.kind)) continue;
+    if (!players.some((p) => p.user_id === sg.to) || sg.to === user.id) continue;
+    const body = JSON.stringify(sg.body ?? null);
+    if (body.length > MAX_SIGNAL) continue;
+    await exec(
+      'INSERT INTO signals (lobby_id, from_user, to_user, kind, body, created_at) VALUES (:id, :f, :to, :k, :b, :t)',
+      { id: lobby.id, f: user.id, to: sg.to, k: sg.kind, b: body, t },
+    );
+  }
+}
+
+async function incomingSignals(lobby, userId, since) {
+  const t = now();
+  const rows = await many(
+    `SELECT id, from_user, kind, body FROM signals
+     WHERE lobby_id = :id AND to_user = :u AND id > :since AND created_at > :cut ORDER BY id LIMIT 30`,
+    { id: lobby.id, u: userId, since: Number(since) || 0, cut: t - SIGNAL_TTL_MS },
+  );
+  return rows.map((r) => ({ id: r.id, from: r.from_user, kind: r.kind, body: parse(r.body, null) }));
+}
+
 const MAX_OPS_JSON = 64_000;
 
 export async function pushOps(lobby, user, ops) {
@@ -493,6 +534,7 @@ export function view(lobby, players, userId) {
       gained: p.gained,
       guessed: !!p.guessed_at,
       active: isActive(p, t),
+      voice: isActive(p, t) ? p.voice : 0,
     })),
   };
   if (lobby.phase === 'pick' && isDrawer) state.choices = parse(lobby.choices, []).map((c) => ({ ...c, mult: TIER_MULT[c.diff] }));
@@ -510,7 +552,7 @@ export function view(lobby, players, userId) {
   return state;
 }
 
-export async function feed(lobby, userId, { strokesSince = 0, strokesRound = 0, msgSince = 0 } = {}) {
+export async function feed(lobby, userId, { strokesSince = 0, strokesRound = 0, msgSince = 0, sigSince = null } = {}) {
   let strokes = [];
   if (lobby.phase === 'draw' || lobby.phase === 'reveal') {
     const since = strokesRound === lobby.round_no ? Number(strokesSince) || 0 : 0;
@@ -525,7 +567,19 @@ export async function feed(lobby, userId, { strokesSince = 0, strokesRound = 0, 
     : `SELECT * FROM (SELECT * FROM messages WHERE lobby_id = :id AND (to_user IS NULL OR to_user = :u) ORDER BY id DESC LIMIT 30) ORDER BY id`;
   const rows = await many(msgQuery, { id: lobby.id, since: Number(msgSince) || 0, u: userId });
   const messages = rows.map((m) => ({ id: m.id, kind: m.kind, userId: m.user_id, name: m.name, body: m.body, roundNo: m.round_no }));
-  return { strokes, strokesRound: lobby.round_no, messages };
+  // Первый запрос (sigSince = null) только узнаёт текущий курсор: старые
+  // сигналы от прошлых подключений не нужны.
+  let signals = [];
+  let sigCursor;
+  if (sigSince != null) {
+    sigCursor = Number(sigSince) || 0;
+    signals = await incomingSignals(lobby, userId, sigCursor);
+    if (signals.length) sigCursor = signals[signals.length - 1].id;
+  } else {
+    const last = await one('SELECT max(id) AS m FROM signals WHERE lobby_id = :id', { id: lobby.id });
+    sigCursor = (last && last.m) || 0;
+  }
+  return { strokes, strokesRound: lobby.round_no, messages, signals, sigCursor };
 }
 
 // Общий ответ всех эндпоинтов: состояние комнаты + новые штрихи и сообщения.

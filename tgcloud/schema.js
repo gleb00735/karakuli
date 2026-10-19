@@ -44,6 +44,8 @@ export const players = table('players', {
   guessedAt: integer('guessed_at'),
   // 1 — игрок перестал выходить на связь (закрыл приложение или пропала сеть).
   away:      integer('away').notNull().default(0),
+  // Голосовой чат: 0 — не подключён, 1 — с микрофоном, 2 — только слушает.
+  voice:     integer('voice').notNull().default(0),
   lastSeen:  integer('last_seen').notNull(),
   joined:    integer('joined_at').notNull(),
 }, (t) => ({
@@ -76,4 +78,18 @@ export const messages = table('messages', {
   created: integer('created_at').notNull(),
 }, (t) => ({
   lobbyIdx: index('idx_messages_lobby').on(t.lobbyId, t.id),
+}));
+
+// Сигнальные сообщения WebRTC между игроками (offer / answer / hello).
+// Сам звук идёт напрямую между устройствами, сервер лишь передаёт эти записи.
+export const signals = table('signals', {
+  id:       integer('id').primaryKey({ autoIncrement: true }),
+  lobbyId:  integer('lobby_id').notNull(),
+  fromUser: integer('from_user').notNull(),
+  toUser:   integer('to_user').notNull(),
+  kind:     text('kind').notNull(),
+  body:     text('body'),
+  created:  integer('created_at').notNull(),
+}, (t) => ({
+  toIdx: index('idx_signals_to').on(t.lobbyId, t.toUser, t.id),
 }));

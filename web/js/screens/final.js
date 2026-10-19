@@ -3,12 +3,13 @@
 
 import { h, svg, icon, icons, avatar, sheet, plural } from '../ui.js';
 import { haptic } from '../tg.js';
-import { qrCard, seatList } from './lobby.js';
+import { qrCard, seatList, voiceButton } from './lobby.js';
 
 export class FinalScreen {
-  constructor({ room, actions }) {
+  constructor({ room, actions, voice }) {
     this.room = room;
     this.actions = actions;
+    this.voice = voice;
     this.el = h('div.screen');
     this.key = '';
     this.celebrated = false;
@@ -40,7 +41,8 @@ export class FinalScreen {
       h('div.topbar', null,
         h('button.icon-btn', { onclick: this.actions.leave, 'aria-label': 'Выйти' }, icon('home')),
         h('div.title', null, 'Итоги'),
-        h('button.icon-btn', { onclick: () => this.showQr(s), 'aria-label': 'Пригласить' }, icon('scan')),
+        h('div.row', { style: { gap: '8px' } }, voiceButton(this.voice),
+          h('button.icon-btn', { onclick: () => this.showQr(s), 'aria-label': 'Пригласить' }, icon('scan'))),
       ),
       h('div.center', { style: { marginTop: '10px' } },
         h('div.hand', { style: { fontSize: '50px', lineHeight: '1', transform: 'rotate(-2deg)' } }, title),

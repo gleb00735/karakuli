@@ -114,3 +114,22 @@ console.log('ALL OK');
 async function wait0(ms, who, code) {
   while (ms > 0) { const d = Math.min(ms, 3_000); skip(d); ms -= d; for (const u of who) await ep('sync', { code }, u); }
 }
+
+// ─── Голос: сигналы доходят адресату ───────────────────────────────────────
+{
+  const P = 21, Q = 22;
+  const code = (await ep('createLobby', {}, P)).state.code;
+  let q = await ep('joinLobby', { code }, Q);
+  assert.equal(q.sigCursor, 0);
+  await ep('voice', { code, voice: 1 }, P);
+  q = await ep('voice', { code, voice: 2 }, Q);
+  assert.deepEqual(q.state.players.map((p) => p.voice), [1, 2]);
+  await ep('sync', { code, signals: [{ to: Q, kind: 'offer', body: { sid: 'x', sdp: 'v=0' } }, { to: 999, kind: 'offer', body: 1 }] }, P);
+  q = await ep('sync', { code, sigSince: 0 }, Q);
+  assert.equal(q.signals.length, 1);
+  assert.equal(q.signals[0].from, P);
+  assert.equal(q.signals[0].body.sdp, 'v=0');
+  const again = await ep('sync', { code, sigSince: q.sigCursor }, Q);
+  assert.equal(again.signals.length, 0);
+  console.log('VOICE SIGNALING OK');
+}

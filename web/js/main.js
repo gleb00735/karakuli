@@ -7,6 +7,7 @@ import { HomeScreen } from './screens/home.js';
 import { LobbyScreen } from './screens/lobby.js';
 import { GameScreen } from './screens/game.js';
 import { FinalScreen } from './screens/final.js';
+import { Voice } from './voice.js';
 
 setup();
 
@@ -25,7 +26,10 @@ const room = {
   screen: null,
   screenKind: null,
   offline: null,
+  sigSince: null,
 };
+
+const voice = new Voice();
 
 export const serverNow = () => Date.now() + room.clockOffset;
 
@@ -42,6 +46,7 @@ function showHome() {
   stopLoop();
   room.code = null;
   room.state = null;
+  voice.reset();
   closingGuard(false);
   setBack(null);
   mount(new HomeScreen({ create, join }), 'home');
@@ -62,7 +67,7 @@ function render() {
   if (!s) return;
   const kind = screenKindFor(s.phase);
   if (kind !== room.screenKind || (kind === 'game' && room.screen.roundNo !== s.roundNo)) {
-    const ctx = { room, actions, serverNow };
+    const ctx = { room, actions, serverNow, voice };
     mount(kind === 'lobby' ? new LobbyScreen(ctx) : kind === 'final' ? new FinalScreen(ctx) : new GameScreen(ctx), kind);
   }
   closingGuard(kind === 'game');
@@ -72,7 +77,7 @@ function render() {
 // ─── Синхронизация ─────────────────────────────────────────────────────────
 
 function cursors() {
-  return { code: room.code, strokesSince: room.strokesSince, strokesRound: room.strokesRound, msgSince: room.msgSince };
+  return { code: room.code, strokesSince: room.strokesSince, strokesRound: room.strokesRound, msgSince: room.msgSince, sigSince: room.sigSince };
 }
 
 function absorb(res, sentAt) {
@@ -106,8 +111,13 @@ function absorb(res, sentAt) {
   }
   if (room.messages.length > 80) room.messages.splice(0, room.messages.length - 80);
 
+  const sigs = (res.signals || []).filter((sg) => room.sigSince == null || sg.id > room.sigSince);
+  if (res.sigCursor != null && (room.sigSince == null || res.sigCursor > room.sigSince)) room.sigSince = res.sigCursor;
+
   render();
   if (room.screen && room.screen.absorb) room.screen.absorb(fresh, newMsgs);
+  voice.sync(room.state);
+  if (sigs.length) voice.onSignals(sigs);
   if (!initial) for (const m of newMsgs) presenceToast(m);
 }
 
@@ -124,6 +134,7 @@ function presenceToast(m) {
 
 function interval() {
   const s = room.state;
+  if (voice.mode && voice.negotiating) return 450;
   if (document.hidden) return 4000;
   if (!s) return 1500;
   if (s.phase === 'draw') return s.drawerId === s.me ? 350 : 650;
@@ -141,6 +152,8 @@ async function loop() {
     const pen = room.screen && room.screen.pen;
     const ops = pen && room.state && room.state.phase === 'draw' && room.state.drawerId === room.state.me ? pen.take() : [];
     if (ops.length) payload.ops = ops;
+    const signals = voice.takeOutbox();
+    if (signals.length) payload.signals = signals;
     const sentAt = Date.now();
     try {
       const res = await call('sync', payload);
@@ -150,6 +163,7 @@ async function loop() {
       absorb(res, sentAt);
     } catch (e) {
       if (ops.length && pen) pen.giveBack(ops);
+      if (signals.length) voice.giveBack(signals);
       if (id !== room.loopId) return;
       if (await handleError(e)) return;
       failures++;
@@ -204,6 +218,7 @@ function enterRoom(res) {
   room.strokesSince = 0;
   room.strokesRound = 0;
   room.msgSince = 0;
+  room.sigSince = null;
   room.messages = [];
   room.screenKind = null;
   setBack(leaveRoom);
@@ -284,6 +299,9 @@ async function boot() {
   } catch {}
   showHome();
 }
+
+voice.kick = () => kick();
+window.__voice = voice;
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && room.code) kick(); });
 

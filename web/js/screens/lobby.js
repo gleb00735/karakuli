@@ -26,6 +26,33 @@ async function copyCode(code) {
   if (await copy(code)) toast('Код скопирован', 'ok', 1400);
 }
 
+// Кнопка микрофона; её вид обновляет сам менеджер голоса (Voice.render).
+export function voiceButton(voice) {
+  const el = h('button.icon-btn.voice-btn', { onclick: () => voice.press() });
+  queueMicrotask(() => voice.render());
+  return el;
+}
+
+// Карточка голосового чата: кто в эфире и кнопка подключения.
+export function voiceCard(voice, state) {
+  const inVoice = state.players.filter((p) => p.voice && p.active);
+  const on = voice.mode !== 0;
+  return h('div.card.voice-card', null,
+    h('div.vc-icon' + (on ? '.on' : ''), null, svg(icons.mic)),
+    h('div.vc-text', null,
+      h('div.vc-title', null, 'Голосовой чат'),
+      h('div.vc-sub', { 'data-voice-status': '' }, voice.statusText()),
+      inVoice.length > 0 && h('div.vc-avas', null, inVoice.map((p) => avatar(p, { size: 22 }))),
+    ),
+    on
+      ? h('button.btn.ghost.small', { onclick: () => voice.leave() }, 'Выйти')
+      : h('button.btn.violet.small', { onclick: () => voice.join() }, 'Войти'),
+  );
+}
+
+const voiceTag = (p) => p.voice === 1 ? h('span.vtag', { title: 'В голосовом чате' }, svg(icons.mic))
+  : p.voice === 2 ? h('span.vtag', { title: 'Слушает' }, svg(icons.headphones)) : null;
+
 export function seatList(state) {
   const seats = state.players.map((p) => {
     const host = p.id === state.hostId;
@@ -37,6 +64,7 @@ export function seatList(state) {
         h('div.st' + (online ? '.on' : '.off'), null, online ? 'в сети' : 'не в сети — ждём…'),
       ),
       p.id === state.me && h('span.tag', null, 'вы'),
+      voiceTag(p),
       host && h('span.tag.host', null, '👑 хозяин'),
     );
   });
@@ -50,16 +78,17 @@ export function seatList(state) {
 }
 
 export class LobbyScreen {
-  constructor({ room, actions }) {
+  constructor({ room, actions, voice }) {
     this.room = room;
     this.actions = actions;
+    this.voice = voice;
     this.el = h('div.screen');
     this.key = '';
   }
 
   update(s) {
     const isHost = s.hostId === s.me;
-    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active]), s.hostId, s.rounds, s.drawTime, s.notice, this.noticeHidden]);
+    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active, p.voice]), this.voice.mode, s.hostId, s.rounds, s.drawTime, s.notice, this.noticeHidden]);
     if (key === this.key) return;
     const prev = this.key ? JSON.parse(this.key)[0].length : s.players.length;
     if (s.players.length > prev) haptic.ok();
@@ -93,12 +122,13 @@ export class LobbyScreen {
       h('div.topbar', null,
         h('button.icon-btn', { onclick: this.actions.leave, 'aria-label': 'Выйти' }, icon('back')),
         h('div.title', null, 'Комната'),
-        h('div', { style: { width: '44px' } }),
+        voiceButton(this.voice),
       ),
       notice || '',
       qrCard(s.code),
       h('div.section-title', null, h('div.h2', null, 'Игроки'), h('div.faint.small', null, `${online.length} в сети · ${n} из ${MAX}`)),
       seatList(s),
+      voiceCard(this.voice, s),
       h('div.section-title', null, h('div.h2', null, 'Партия'), !isHost && h('div.faint.small', null, 'настраивает хозяин')),
       h('div.card.settings', null,
         h('div.setting', null, h('div.lbl', null, 'Раунды'),

@@ -4,12 +4,14 @@
 import { h, svg, icon, icons, avatar, toast, shake, plural } from '../ui.js';
 import { Board, Pen, Replay, COLORS, ERASER, SIZES } from '../draw.js';
 import { haptic, confirm } from '../tg.js';
+import { voiceButton } from './lobby.js';
 
 const LEVELS = ['Легко', 'Средне', 'Сложно'];
 const isLetter = (ch) => /[a-zа-яё0-9]/i.test(ch);
 
 export class GameScreen {
-  constructor({ room, actions, serverNow }) {
+  constructor({ room, actions, serverNow, voice }) {
+    this.voice = voice;
     this.room = room;
     this.actions = actions;
     this.serverNow = serverNow;
@@ -41,7 +43,9 @@ export class GameScreen {
       h('div.hud', null,
         this.timer,
         this.wordArea,
-        h('button.icon-btn', { onclick: this.actions.leave, 'aria-label': 'Выйти' }, icon('close')),
+        h('div.hud-btns', null,
+          voiceButton(this.voice),
+          h('button.icon-btn', { onclick: this.actions.leave, 'aria-label': 'Выйти' }, icon('close'))),
       ),
       this.strip,
       this.wrap,
