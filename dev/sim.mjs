@@ -269,3 +269,54 @@ async function wait0(ms, who, code) {
   assert.deepEqual(s.state.race.results, [[52, 44000], [51, 46000], [53, null]]);
   console.log('RACE OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
 }
+
+// ─── Кто я? ────────────────────────────────────────────────────────────────
+{
+  const { matches } = await import('../tgcloud/lib/who.js');
+  assert.ok(matches('гагарин', ['Юрий Гагарин', 'Гагарин']));
+  assert.ok(matches('Я — Юрий Гагарин!', ['Юрий Гагарин', 'Гагарин']));
+  assert.ok(matches('человек паук', ['Человек-паук', 'Спайдермен']));
+  assert.ok(matches('Чебурашкаа', ['Чебурашка']));
+  assert.ok(!matches('кот', ['Крот']));
+  assert.ok(!matches('слон', ['Шрек']));
+
+  const ids = [61, 62, 63];
+  const code = (await ep('createLobby', { mode: 'who' }, 61)).state.code;
+  for (const u of ids.slice(1)) await ep('joinLobby', { code }, u);
+  assert.equal((await ep('startGame', { code }, 61)).error, undefined);
+  let s = await ep('settings', { code, deck: 'animals' }, 61);
+  assert.equal(s.error, 'IN_PROGRESS', 'колоду меняют только в лобби');
+  s = await ep('sync', { code }, 61);
+  assert.equal(s.state.phase, 'w_play');
+  const w = s.state.who;
+  assert.ok(!w.chars.some(([id]) => id === 61), 'своего персонажа не видно');
+  assert.equal(w.chars.length, 2);
+  const order = w.order;
+  let asker = w.asker;
+  const others = (a) => ids.filter((x) => x !== a);
+  // Вопрос и ответы: «да» большинством → спрашивает снова.
+  assert.equal((await ep('whoAct', { code, kind: 'ask', text: 'Я человек?' }, others(asker)[0])).error, 'NOT_YOUR_TURN');
+  await ep('whoAct', { code, kind: 'ask', text: 'Я человек?' }, asker);
+  for (const u of others(asker)) await ep('whoAct', { code, kind: 'answer', value: 1 }, u);
+  s = await ep('sync', { code }, asker);
+  assert.equal(s.state.who.asker, asker);
+  assert.equal(s.state.who.q, null);
+  // «Нет» → ход дальше.
+  await ep('whoAct', { code, kind: 'ask', text: 'Я животное?' }, asker);
+  for (const u of others(asker)) await ep('whoAct', { code, kind: 'answer', value: 2 }, u);
+  s = await ep('sync', { code }, asker);
+  assert.notEqual(s.state.who.asker, asker);
+  asker = s.state.who.asker;
+  // Правильная догадка: узнаём персонажа глазами соседа.
+  const name = (await ep('sync', { code }, others(asker)[0])).state.who.chars.find(([id]) => id === asker)[1];
+  s = await ep('whoAct', { code, kind: 'guess', text: name.toLowerCase() }, asker);
+  assert.deepEqual(s.state.who.done[0], { id: asker, ok: true, place: 1 });
+  assert.ok(s.state.who.chars.some(([id]) => id === asker), 'угадавший видит своего персонажа');
+  // Следующий сдаётся → остаётся один → конец.
+  asker = s.state.who.asker;
+  s = await ep('whoAct', { code, kind: 'giveup' }, asker);
+  assert.equal(s.state.phase, 'final');
+  assert.equal(s.state.who.chars.length, 3);
+  void order;
+  console.log('WHO OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
+}

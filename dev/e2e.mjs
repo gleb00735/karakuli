@@ -50,7 +50,7 @@ await wait(2000);
 await shot(A, '04-lobby-host-3');
 await shot(B, '04-lobby-guest-dark');
 
-await A.click('.seg >> nth=1 >> text=1');
+await A.click('.seg >> nth=0 >> text=1');
 await wait(500);
 await A.click('text=Начать игру');
 await wait(1500);

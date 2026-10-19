@@ -895,3 +895,47 @@ img { display: block; }
 .rc-pad:active { background: rgba(255, 255, 255, .3); }
 .rc-place { width: 26px; text-align: center; font: 700 26px/1 var(--hand); color: var(--ink-2); }
 .race .overlay .gain .plus { font-variant-numeric: tabular-nums; }
+
+/* ─── Выбор игры в лобби ──────────────────────────────────── */
+.game-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.gg {
+  display: flex; align-items: center; gap: 6px; justify-content: center;
+  min-height: 42px; padding: 0 8px; border-radius: 12px;
+  background: var(--bg-2); box-shadow: inset 0 0 0 2px var(--line);
+  font-weight: 800; font-size: 14px; color: var(--ink-2);
+}
+.gg .e { font-size: 17px; }
+.gg.on { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 2px var(--violet), 0 2px 0 var(--violet-d); }
+.gg:disabled { opacity: .5; }
+
+/* ─── Кто я? ──────────────────────────────────────────────── */
+.wh-me { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow); }
+.wh-me-text { flex: 1; min-width: 0; }
+.wh-sticker {
+  position: relative; padding: 6px 10px; min-height: 30px;
+  background: #ffe066; color: #3b2a00; border-radius: 4px 4px 10px 4px;
+  font: 700 19px/1.1 var(--hand); text-align: center;
+  box-shadow: 0 3px 8px -2px rgba(0, 0, 0, .3);
+  transform: rotate(-3deg); word-break: break-word; max-width: 100%;
+}
+.wh-sticker::before { content: ''; position: absolute; left: 50%; top: -6px; width: 34px; height: 12px; transform: translateX(-50%) rotate(3deg); background: rgba(255, 255, 255, .55); border-radius: 2px; }
+.wh-sticker.me { width: 86px; height: 86px; flex: none; display: grid; place-items: center; font-size: 46px; }
+.wh-sticker.me.known { font-size: 20px; }
+.wh-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.wh-p { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px 10px; border-radius: 18px; background: var(--card); box-shadow: var(--shadow); text-align: center; min-width: 0; }
+.wh-p .ava { --s: 46px; }
+.wh-p.asking { box-shadow: inset 0 0 0 3px var(--violet), var(--shadow); }
+.wh-p.done { opacity: .7; }
+.wh-name { font-weight: 800; font-size: 13.5px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wh-tag { font-size: 11.5px; font-weight: 900; padding: 3px 8px; border-radius: 99px; background: var(--bg-2); color: var(--ink-2); }
+.wh-tag.on { background: color-mix(in srgb, var(--violet) 18%, var(--card)); color: var(--violet); }
+.wh-q { padding: 14px; border-radius: 20px; background: color-mix(in srgb, var(--violet) 10%, var(--card)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--violet) 35%, transparent); display: flex; flex-direction: column; gap: 8px; animation: pop-in .25s; }
+.wh-q-head { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--ink-2); }
+.wh-q-head .ava { box-shadow: none; }
+.wh-q-text { font: 900 21px/1.2 var(--font); }
+.wh-tally { display: flex; flex-wrap: wrap; gap: 10px; font-weight: 800; font-size: 14px; }
+.wh-answer { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.wh-answer .btn { padding: 0 6px; font-size: 14px; }
+.wh-guess { height: 54px; border: 0; outline: 0; border-radius: 16px; padding: 0 16px; background: var(--card); box-shadow: inset 0 0 0 2px var(--violet); font-weight: 800; font-size: 17px; -webkit-user-select: text; user-select: text; }
+.wh-final-char { flex: none; max-width: 45%; font: 700 18px/1.1 var(--hand); color: var(--violet); text-align: right; }
+.m-bottom .row .btn.small { flex: 1; }

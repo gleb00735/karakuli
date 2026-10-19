@@ -25,12 +25,14 @@ export const lobbies = table('lobbies', {
   phaseStart:  integer('phase_start'),
   deadline:    integer('deadline'),
   lastResult:  text('last_result'),
-  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия», 'checkers' — «Шашки», 'race' — «Гонки».
+  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия», 'checkers' — «Шашки», 'race' — «Гонки», 'who' — «Кто я?».
   mode:        text('mode').notNull().default('draw'),
   // Состояние партии в мафию или шашки (роли и события / доска и ход) — JSON.
   mstate:      text('mstate'),
   // Трасса для «Гонок».
   track:       text('track').notNull().default('ring'),
+  // Колода для «Кто я?»: mix, chars, famous, animals, jobs.
+  deck:        text('deck').notNull().default('mix'),
   created:     integer('created_at').notNull(),
   updated:     integer('updated_at').notNull(),
 }, (t) => ({
@@ -100,7 +102,8 @@ export const signals = table('signals', {
   toIdx: index('idx_signals_to').on(t.lobbyId, t.toUser, t.id),
 }));
 
-// Ходы в мафии: ночные действия, голоса, «готов» и «ознакомился с ролью».
+// Ходы в мафии (ночные действия, голоса, «готов», «ознакомился с ролью»)
+// и ответы на вопросы в «Кто я?».
 // key — шаг партии (например, n2 — вторая ночь, v2 — второе голосование);
 // у одного игрока на шаге один ход, повторный ход заменяет предыдущий.
 export const mafiaMoves = table('mafia_moves', {

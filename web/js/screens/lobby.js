@@ -11,11 +11,14 @@ export function mafiaLineup(n) {
   return `${mafia === 1 ? '1 мафия' : '2 мафии'}, комиссар, доктор${civ ? `, ${civ} ${civ === 1 ? 'мирный' : 'мирных'}` : ''}`;
 }
 
+const DECK_NAMES = { mix: '🎲 Всё вперемешку', chars: '🦸 Персонажи', famous: '⭐ Знаменитости', animals: '🐾 Животные', jobs: '👷 Профессии' };
+
 export const GAMES = {
   draw: { title: 'Каракули', sub: 'Рисуй и угадывай', players: '2–3 игрока', emoji: '🎨' },
   mafia: { title: 'Мафия', sub: 'Найди мафию среди друзей', players: '4–8 игроков', emoji: '🕵️' },
   checkers: { title: 'Шашки', sub: 'Русские шашки один на один', players: '2 игрока', emoji: '⚪' },
   race: { title: 'Гонки', sub: 'Заезд на 3 круга', players: '2–8 игроков', emoji: '🏎️' },
+  who: { title: 'Кто я?', sub: 'Угадай, кто написан у тебя на лбу', players: '3–8 игроков', emoji: '🤔' },
 };
 
 export function qrCard(code) {
@@ -104,7 +107,7 @@ export class LobbyScreen {
 
   update(s) {
     const isHost = s.hostId === s.me;
-    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active, p.voice]), this.voice.mode, s.hostId, s.rounds, s.drawTime, s.mode, s.track, s.notice, this.noticeHidden]);
+    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active, p.voice]), this.voice.mode, s.hostId, s.rounds, s.drawTime, s.mode, s.track, s.deck, s.notice, this.noticeHidden]);
     if (key === this.key) return;
     const prev = this.key ? JSON.parse(this.key)[0].length : s.players.length;
     if (s.players.length > prev) haptic.ok();
@@ -150,13 +153,25 @@ export class LobbyScreen {
       h('div.section-title', null, h('div.h2', null, 'Партия'), !isHost && h('div.faint.small', null, 'настраивает хозяин')),
       h('div.card.settings', null,
         h('div.setting.wide', null, h('div.lbl', null, 'Игра'),
-          seg(['draw', 'mafia', 'checkers', 'race'], s.mode, (v) => GAMES[v].title, (v) => this.actions.settings({ mode: v }))),
+          h('div.game-grid', null, Object.keys(GAMES).map((v) => h('button.gg' + (v === s.mode ? '.on' : ''), {
+            disabled: !isHost && v !== s.mode,
+            onclick: () => { if (isHost && v !== s.mode) { haptic.tick(); this.actions.settings({ mode: v }); } },
+          }, h('span.e', null, GAMES[v].emoji), GAMES[v].title)))),
         s.mode === 'draw' && [
           h('div.setting', null, h('div.lbl', null, 'Раунды'),
             seg([1, 2, 3], s.rounds, String, (v) => this.actions.settings({ rounds: v }))),
           h('div.setting', null, h('div.lbl', null, 'На рисунок'),
             seg([60, 80, 100], s.drawTime, (v) => v + ' с', (v) => this.actions.settings({ drawTime: v }))),
         ],
+        s.mode === 'who' && h('div.setting.wide', null, h('div.lbl', null, 'Колода'),
+          h('div.game-grid', null, Object.entries(DECK_NAMES).map(([v, name]) => h('button.gg' + (v === s.deck ? '.on' : ''), {
+            disabled: !isHost && v !== s.deck,
+            onclick: () => { if (isHost && v !== s.deck) { haptic.tick(); this.actions.settings({ deck: v }); } },
+          }, name)))),
+        s.mode === 'who' && h('div.mafia-info', null,
+          h('div', null, 'Каждому загадан персонаж: его видят все, кроме вас. Задавайте вопросы «да/нет» и угадайте, кто вы.'),
+          h('div.faint.small', null, 'Большинство ответило «да» — спрашиваете дальше, «нет» — ход переходит.'),
+        ),
         s.mode === 'race' && h('div.setting.wide', null, h('div.lbl', null, 'Трасса'),
           seg(['ring', 'canyon', 'city'], s.track, (v) => ({ ring: 'Кольцо', canyon: 'Каньон', city: 'Город' })[v], (v) => this.actions.settings({ track: v }))),
         s.mode === 'race' && h('div.mafia-info', null,

@@ -8,6 +8,7 @@
 
 import { one, many, exec } from './sql.js';
 import { TIERS, TIER_MULT } from './words.js';
+import { normalize, isClose } from './text.js';
 import {
   STALE_MS, LOBBY_DROP_MS, now, begin, fail, caller, loadLobby, loadLobbyById, loadPlayers,
   isActive, isGone, parse, addMessage, transition, dropPlayers,
@@ -15,16 +16,17 @@ import {
 import { MAFIA_MIN, MAFIA_MAX, startMafia, mafiaAdvance, mafiaAct, mafiaChat, mafiaView } from './mafia.js';
 import { startCheckers, checkersAdvance, checkersAct, checkersView } from './checkers.js';
 import { RACE_MIN, RACE_MAX, TRACKS, startRace, raceAdvance, pushRacePos, raceView } from './race.js';
+import { WHO_MIN, WHO_MAX, DECK_KEYS, startWho, whoAdvance, whoAct, whoView } from './who.js';
 
 export { begin, caller, fail, loadLobby, pushRacePos };
 
 export const MAX_PLAYERS = 3;
 export const MIN_PLAYERS = 2;
-const MODES = ['draw', 'mafia', 'checkers', 'race'];
-const LIMITS = { draw: [MIN_PLAYERS, MAX_PLAYERS], mafia: [MAFIA_MIN, MAFIA_MAX], checkers: [2, 2], race: [RACE_MIN, RACE_MAX] };
-const GAME_TITLES = { draw: '«Каракули»', mafia: '«Мафию»', checkers: '«Шашки»', race: '«Гонки»' };
-// Фазы партий, которые ведут модули игр (мафия, шашки, гонки).
-const ADVANCERS = { m_: mafiaAdvance, c_: checkersAdvance, r_: raceAdvance };
+const MODES = ['draw', 'mafia', 'checkers', 'race', 'who'];
+const LIMITS = { draw: [MIN_PLAYERS, MAX_PLAYERS], mafia: [MAFIA_MIN, MAFIA_MAX], checkers: [2, 2], race: [RACE_MIN, RACE_MAX], who: [WHO_MIN, WHO_MAX] };
+const GAME_TITLES = { draw: '«Каракули»', mafia: '«Мафию»', checkers: '«Шашки»', race: '«Гонки»', who: '«Кто я?»' };
+// Фазы партий, которые ведут модули игр (мафия, шашки, гонки, «Кто я?»).
+const ADVANCERS = { m_: mafiaAdvance, c_: checkersAdvance, r_: raceAdvance, w_: whoAdvance };
 const minPlayers = (lobby) => (LIMITS[lobby.mode] || LIMITS.draw)[0];
 const maxPlayers = (lobby) => (LIMITS[lobby.mode] || LIMITS.draw)[1];
 export const PICK_MS = 15_000;
@@ -34,34 +36,6 @@ const ROUND_OPTIONS = [1, 2, 3];
 const DRAW_TIME_OPTIONS = [60, 80, 100];
 
 // ─── Слова ─────────────────────────────────────────────────────────────────
-
-export function normalize(s) {
-  return String(s || '')
-    .toLowerCase()
-    .replace(/ё/g, 'е')
-    .replace(/[^a-zа-я0-9]+/g, ' ')
-    .trim();
-}
-
-function levenshtein(a, b) {
-  if (a === b) return 0;
-  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    let diag = prev[0];
-    prev[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const tmp = prev[j];
-      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
-      diag = tmp;
-    }
-  }
-  return prev[b.length];
-}
-
-export function isClose(guess, word) {
-  if (Math.abs(guess.length - word.length) > 2) return false;
-  return levenshtein(guess, word) <= (word.length <= 5 ? 1 : 2);
-}
 
 function mulberry32(seed) {
   return () => {
@@ -343,7 +317,7 @@ export async function enter(user, code) {
   return advance(lobby);
 }
 
-export async function updateSettings(user, code, { rounds, drawTime, mode, track }) {
+export async function updateSettings(user, code, { rounds, drawTime, mode, track, deck }) {
   const { lobby } = await enter(user, code);
   if (lobby.host_id !== user.id) fail('NOT_HOST', 'Настройки меняет хозяин комнаты');
   if (lobby.phase !== 'lobby' && lobby.phase !== 'final') fail('IN_PROGRESS', 'Игра уже идёт');
@@ -351,6 +325,7 @@ export async function updateSettings(user, code, { rounds, drawTime, mode, track
   if (ROUND_OPTIONS.includes(rounds)) changes.rounds = rounds;
   if (DRAW_TIME_OPTIONS.includes(drawTime)) changes.draw_time = drawTime;
   if (TRACKS.includes(track)) changes.track = track;
+  if (DECK_KEYS.includes(deck)) changes.deck = deck;
   if (MODES.includes(mode) && mode !== lobby.mode) {
     const n = (await loadPlayers(lobby.id)).length;
     if (n > LIMITS[mode][1]) fail('TOO_MANY', `В ${GAME_TITLES[mode]} играют до ${LIMITS[mode][1]} человек, а в комнате ${n}`);
@@ -374,6 +349,7 @@ export async function startGame(user, code) {
     const ids = active.map((p) => p.user_id);
     const started = lobby.mode === 'mafia' ? await startMafia(lobby, ids)
       : lobby.mode === 'checkers' ? await startCheckers(lobby, ids)
+      : lobby.mode === 'who' ? await startWho(lobby, ids, lobby.deck)
       : await startRace(lobby, ids, lobby.track);
     if (!started) fail('CONFLICT', 'Попробуйте ещё раз');
     return;
@@ -449,6 +425,11 @@ export async function mafiaAction(user, code, kind, target) {
 export async function checkersAction(user, code, kind, path) {
   const { lobby, players } = await enter(user, code);
   await checkersAct(lobby, players, user, kind, path);
+}
+
+export async function whoAction(user, code, kind, args) {
+  const { lobby, players } = await enter(user, code);
+  await whoAct(lobby, players, user, kind, args);
 }
 
 export async function chat(user, code, text) {
@@ -551,7 +532,9 @@ export async function view(lobby, players, userId) {
   if (lobby.mode === 'mafia' && (lobby.phase.startsWith('m_') || lobby.phase === 'final')) state.mafia = await mafiaView(lobby, userId);
   if (lobby.mode === 'checkers' && (lobby.phase.startsWith('c_') || lobby.phase === 'final')) state.checkers = checkersView(lobby, userId);
   if (lobby.mode === 'race' && (lobby.phase.startsWith('r_') || lobby.phase === 'final')) state.race = await raceView(lobby, userId);
+  if (lobby.mode === 'who' && (lobby.phase.startsWith('w_') || lobby.phase === 'final')) state.who = await whoView(lobby, userId);
   state.track = lobby.track;
+  state.deck = lobby.deck;
   if (lobby.phase === 'lobby') {
     const last = parse(lobby.last_result, null);
     if (last && last.aborted) state.notice = { aborted: true, names: last.names || [], ids: last.ids || [] };
