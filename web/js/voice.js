@@ -10,11 +10,17 @@ import { call } from './api.js';
 import { toast, icons } from './ui.js';
 import { haptic } from './tg.js';
 
-const ICE_SERVERS = [
+// Запасной список, если сервер не ответил. Обычный набор (STUN + TURN)
+// выдаёт эндпоинт iceServers.
+const FALLBACK_ICE = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   { urls: 'stun:stun.cloudflare.com:3478' },
 ];
-const ICE_WAIT_MS = 1500;
+// Без TURN кандидаты собираются быстро; с TURN (особенно через TLS) — дольше.
+const iceWait = (turn) => (turn ? 3500 : 1500);
+// Если соединение так и не установилось за это время — вероятно, сеть
+// не пропускает прямой звук (VPN, «серые» адреса оператора).
+const STUCK_MS = 15_000;
 const RETRY_MS = 12_000;
 const HELLO_EVERY_MS = 5000;
 const SPEAK_LEVEL = 0.035;
@@ -36,6 +42,7 @@ export class Voice {
     this.kick = () => {};
     this.resetSent = false;
     this.busy = false;
+    this.ice = null;
     setInterval(() => this.meter(), 150);
     document.addEventListener('pointerdown', () => this.unlock(), true);
   }
@@ -51,6 +58,7 @@ export class Voice {
     this.busy = true;
     haptic.tap();
     this.audioContext();
+    await this.loadIce();
     let mode = MIC;
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error(), { name: 'Unsupported' });
@@ -111,6 +119,16 @@ export class Voice {
     else this.join();
   }
 
+  async loadIce() {
+    if (this.ice) return;
+    try {
+      const res = await call('iceServers');
+      this.ice = { servers: res.iceServers, turn: !!res.turn };
+    } catch {
+      this.ice = { servers: FALLBACK_ICE, turn: false };
+    }
+  }
+
   takeOutbox() { const out = this.outbox; this.outbox = []; return out; }
   giveBack(list) { this.outbox = list.concat(this.outbox); }
 
@@ -138,6 +156,9 @@ export class Voice {
     }
     for (const id of [...this.peers.keys()]) if (!want.has(id)) this.close(id);
     this.missing = [...want.keys()].some((id) => !this.peers.has(id));
+    const pending = this.missing || [...this.peers.values()].some((p) => p.pc.connectionState !== 'connected');
+    if (!pending) this.stuckSince = 0;
+    else if (!this.stuckSince) this.stuckSince = Date.now();
     const t = Date.now();
     for (const id of want.keys()) {
       const peer = this.peers.get(id);
@@ -176,7 +197,7 @@ export class Voice {
 
   peer(id, sid) {
     this.close(id);
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: (this.ice && this.ice.servers) || FALLBACK_ICE });
     const peer = { id, sid, pc, created: Date.now(), audio: null };
     pc.ontrack = (e) => this.play(id, e.streams[0] || new MediaStream([e.track]));
     pc.onconnectionstatechange = () => {
@@ -197,7 +218,7 @@ export class Voice {
     if (this.stream) this.addLocal(pc);
     else pc.addTransceiver('audio', { direction: 'recvonly' });
     await pc.setLocalDescription(await pc.createOffer());
-    await iceGathered(pc);
+    await iceGathered(pc, iceWait(this.ice && this.ice.turn));
     if (this.peers.get(id)?.sid !== sid) return;
     this.outbox.push({ to: id, kind: 'offer', body: { sid, sdp: pc.localDescription.sdp } });
     this.kick();
@@ -208,7 +229,7 @@ export class Voice {
     await pc.setRemoteDescription({ type: 'offer', sdp: body.sdp });
     this.addLocal(pc);
     await pc.setLocalDescription(await pc.createAnswer());
-    await iceGathered(pc);
+    await iceGathered(pc, iceWait(this.ice && this.ice.turn));
     if (this.peers.get(id)?.sid !== body.sid) return;
     this.outbox.push({ to: id, kind: 'answer', body: { sid: body.sid, sdp: pc.localDescription.sdp } });
     this.kick();
@@ -316,17 +337,24 @@ export class Voice {
     if (this.needsTap) return 'Коснитесь экрана, чтобы включить звук';
     const others = s ? s.players.filter((p) => p.id !== s.me && p.voice && p.active).length : 0;
     if (!others) return 'Ждём остальных';
-    if (this.negotiating) return 'Соединяемся…';
+    if (this.negotiating) {
+      if (this.stuckSince && Date.now() - this.stuckSince > STUCK_MS) {
+        return this.ice && this.ice.turn
+          ? 'Не удаётся соединиться — проверьте интернет'
+          : 'Сеть не пропускает голос напрямую (VPN или мобильный интернет)';
+      }
+      return 'Соединяемся…';
+    }
     return this.mode === LISTEN ? 'Вы слушаете' : this.muted ? 'Микрофон выключен' : 'Вас слышат';
   }
 }
 
-function iceGathered(pc) {
+function iceGathered(pc, ms) {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
   return new Promise((resolve) => {
     const done = () => { pc.removeEventListener('icegatheringstatechange', check); clearTimeout(timer); resolve(); };
     const check = () => { if (pc.iceGatheringState === 'complete') done(); };
-    const timer = setTimeout(done, ICE_WAIT_MS);
+    const timer = setTimeout(done, ms);
     pc.addEventListener('icegatheringstatechange', check);
   });
 }
