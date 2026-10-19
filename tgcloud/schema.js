@@ -25,10 +25,12 @@ export const lobbies = table('lobbies', {
   phaseStart:  integer('phase_start'),
   deadline:    integer('deadline'),
   lastResult:  text('last_result'),
-  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия», 'checkers' — «Шашки».
+  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия», 'checkers' — «Шашки», 'race' — «Гонки».
   mode:        text('mode').notNull().default('draw'),
   // Состояние партии в мафию или шашки (роли и события / доска и ход) — JSON.
   mstate:      text('mstate'),
+  // Трасса для «Гонок».
+  track:       text('track').notNull().default('ring'),
   created:     integer('created_at').notNull(),
   updated:     integer('updated_at').notNull(),
 }, (t) => ({
@@ -110,4 +112,16 @@ export const mafiaMoves = table('mafia_moves', {
   created: integer('created_at').notNull(),
 }, (t) => ({
   moveIdx: uniqueIndex('uidx_mafia_moves').on(t.lobbyId, t.key, t.userId),
+}));
+
+// Гонки: последняя присланная позиция машины каждого игрока и время финиша.
+export const racePos = table('race_pos', {
+  id:       integer('id').primaryKey({ autoIncrement: true }),
+  lobbyId:  integer('lobby_id').notNull(),
+  userId:   integer('user_id').notNull(),
+  data:     text('data').notNull(),
+  finishMs: integer('finish_ms'),
+  updated:  integer('updated_at').notNull(),
+}, (t) => ({
+  carIdx: uniqueIndex('uidx_race_pos').on(t.lobbyId, t.userId),
 }));

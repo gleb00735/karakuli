@@ -14,14 +14,17 @@ import {
 } from './core.js';
 import { MAFIA_MIN, MAFIA_MAX, startMafia, mafiaAdvance, mafiaAct, mafiaChat, mafiaView } from './mafia.js';
 import { startCheckers, checkersAdvance, checkersAct, checkersView } from './checkers.js';
+import { RACE_MIN, RACE_MAX, TRACKS, startRace, raceAdvance, pushRacePos, raceView } from './race.js';
 
-export { begin, caller, fail, loadLobby };
+export { begin, caller, fail, loadLobby, pushRacePos };
 
 export const MAX_PLAYERS = 3;
 export const MIN_PLAYERS = 2;
-const MODES = ['draw', 'mafia', 'checkers'];
-const LIMITS = { draw: [MIN_PLAYERS, MAX_PLAYERS], mafia: [MAFIA_MIN, MAFIA_MAX], checkers: [2, 2] };
-const GAME_TITLES = { draw: '«Каракули»', mafia: '«Мафию»', checkers: '«Шашки»' };
+const MODES = ['draw', 'mafia', 'checkers', 'race'];
+const LIMITS = { draw: [MIN_PLAYERS, MAX_PLAYERS], mafia: [MAFIA_MIN, MAFIA_MAX], checkers: [2, 2], race: [RACE_MIN, RACE_MAX] };
+const GAME_TITLES = { draw: '«Каракули»', mafia: '«Мафию»', checkers: '«Шашки»', race: '«Гонки»' };
+// Фазы партий, которые ведут модули игр (мафия, шашки, гонки).
+const ADVANCERS = { m_: mafiaAdvance, c_: checkersAdvance, r_: raceAdvance };
 const minPlayers = (lobby) => (LIMITS[lobby.mode] || LIMITS.draw)[0];
 const maxPlayers = (lobby) => (LIMITS[lobby.mode] || LIMITS.draw)[1];
 export const PICK_MS = 15_000;
@@ -216,8 +219,8 @@ export async function advance(lobby) {
       return { lobby, players };
     }
 
-    if (lobby.phase.startsWith('m_') || lobby.phase.startsWith('c_')) {
-      next = await (lobby.phase.startsWith('m_') ? mafiaAdvance : checkersAdvance)(lobby, players, t);
+    if (ADVANCERS[lobby.phase.slice(0, 2)]) {
+      next = await ADVANCERS[lobby.phase.slice(0, 2)](lobby, players, t);
       if (next === undefined) return { lobby, players };
     } else if (inGame && players.filter((p) => !isGone(p, t)).length < MIN_PLAYERS) {
       next = await abort(lobby, players, t);
@@ -340,13 +343,14 @@ export async function enter(user, code) {
   return advance(lobby);
 }
 
-export async function updateSettings(user, code, { rounds, drawTime, mode }) {
+export async function updateSettings(user, code, { rounds, drawTime, mode, track }) {
   const { lobby } = await enter(user, code);
   if (lobby.host_id !== user.id) fail('NOT_HOST', 'Настройки меняет хозяин комнаты');
   if (lobby.phase !== 'lobby' && lobby.phase !== 'final') fail('IN_PROGRESS', 'Игра уже идёт');
   const changes = {};
   if (ROUND_OPTIONS.includes(rounds)) changes.rounds = rounds;
   if (DRAW_TIME_OPTIONS.includes(drawTime)) changes.draw_time = drawTime;
+  if (TRACKS.includes(track)) changes.track = track;
   if (MODES.includes(mode) && mode !== lobby.mode) {
     const n = (await loadPlayers(lobby.id)).length;
     if (n > LIMITS[mode][1]) fail('TOO_MANY', `В ${GAME_TITLES[mode]} играют до ${LIMITS[mode][1]} человек, а в комнате ${n}`);
@@ -365,10 +369,13 @@ export async function startGame(user, code) {
   if (active.length < minPlayers(lobby)) fail('NOT_ENOUGH', `Нужно хотя бы ${minPlayers(lobby)} игрока в сети`);
   // Кто не в сети в момент старта — выбывает из комнаты.
   await dropPlayers(lobby, players.filter((p) => !isActive(p, t)));
-  if (lobby.mode === 'mafia' || lobby.mode === 'checkers') {
+  if (lobby.mode !== 'draw') {
     if (active.length > maxPlayers(lobby)) fail('TOO_MANY', `Здесь играют не больше ${maxPlayers(lobby)} человек`);
-    const start = lobby.mode === 'mafia' ? startMafia : startCheckers;
-    if (!(await start(lobby, active.map((p) => p.user_id)))) fail('CONFLICT', 'Попробуйте ещё раз');
+    const ids = active.map((p) => p.user_id);
+    const started = lobby.mode === 'mafia' ? await startMafia(lobby, ids)
+      : lobby.mode === 'checkers' ? await startCheckers(lobby, ids)
+      : await startRace(lobby, ids, lobby.track);
+    if (!started) fail('CONFLICT', 'Попробуйте ещё раз');
     return;
   }
   const order = active.map((p) => p.user_id);
@@ -543,6 +550,8 @@ export async function view(lobby, players, userId) {
   if (lobby.phase === 'reveal') state.result = parse(lobby.last_result, null);
   if (lobby.mode === 'mafia' && (lobby.phase.startsWith('m_') || lobby.phase === 'final')) state.mafia = await mafiaView(lobby, userId);
   if (lobby.mode === 'checkers' && (lobby.phase.startsWith('c_') || lobby.phase === 'final')) state.checkers = checkersView(lobby, userId);
+  if (lobby.mode === 'race' && (lobby.phase.startsWith('r_') || lobby.phase === 'final')) state.race = await raceView(lobby, userId);
+  state.track = lobby.track;
   if (lobby.phase === 'lobby') {
     const last = parse(lobby.last_result, null);
     if (last && last.aborted) state.notice = { aborted: true, names: last.names || [], ids: last.ids || [] };

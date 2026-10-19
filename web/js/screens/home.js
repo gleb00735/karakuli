@@ -66,6 +66,7 @@ export class HomeScreen {
       card('draw'),
       card('mafia'),
       card('checkers'),
+      card('race'),
     ));
   }
 

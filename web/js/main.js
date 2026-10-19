@@ -9,6 +9,7 @@ import { GameScreen } from './screens/game.js';
 import { FinalScreen } from './screens/final.js';
 import { MafiaScreen } from './screens/mafia.js';
 import { CheckersScreen } from './screens/checkers.js';
+import { RaceScreen } from './screens/race.js';
 import { Voice } from './voice.js';
 
 setup();
@@ -62,6 +63,7 @@ function screenKindFor(s) {
   if (s.phase === 'lobby') return 'lobby';
   if (s.phase.startsWith('m_') || (s.phase === 'final' && s.mode === 'mafia')) return 'mafia';
   if (s.phase.startsWith('c_') || (s.phase === 'final' && s.mode === 'checkers')) return 'checkers';
+  if (s.phase.startsWith('r_') || (s.phase === 'final' && s.mode === 'race')) return 'race';
   if (s.phase === 'final') return 'final';
   return 'game';
 }
@@ -72,10 +74,10 @@ function render() {
   const kind = screenKindFor(s);
   if (kind !== room.screenKind || (kind === 'game' && room.screen.roundNo !== s.roundNo)) {
     const ctx = { room, actions, serverNow, voice };
-    const Screen = { lobby: LobbyScreen, final: FinalScreen, mafia: MafiaScreen, checkers: CheckersScreen, game: GameScreen }[kind];
+    const Screen = { lobby: LobbyScreen, final: FinalScreen, mafia: MafiaScreen, checkers: CheckersScreen, race: RaceScreen, game: GameScreen }[kind];
     mount(new Screen(ctx), kind);
   }
-  closingGuard(kind === 'game' || ((kind === 'mafia' || kind === 'checkers') && s.phase !== 'final'));
+  closingGuard(kind === 'game' || (['mafia', 'checkers', 'race'].includes(kind) && s.phase !== 'final'));
   room.screen.update(s);
 }
 
@@ -139,6 +141,8 @@ function presenceToast(m) {
 
 function interval() {
   const s = room.state;
+  if (s && s.phase === 'r_race') return 300;
+  if (s && s.phase === 'r_countdown') return 500;
   if (voice.mode && voice.negotiating) return 450;
   if (document.hidden) return 4000;
   if (!s) return 1500;
@@ -159,12 +163,15 @@ async function loop() {
     if (ops.length) payload.ops = ops;
     const signals = voice.takeOutbox();
     if (signals.length) payload.signals = signals;
+    const racePos = room.screen && room.screen.racePos;
+    if (racePos) payload.race = racePos;
     const sentAt = Date.now();
     try {
       const res = await call('sync', payload);
       if (id !== room.loopId) return;
       failures = 0;
       setOffline(false);
+      if (racePos && racePos.fin != null && room.screen.confirmFinish) room.screen.confirmFinish();
       absorb(res, sentAt);
     } catch (e) {
       if (ops.length && pen) pen.giveBack(ops);
@@ -232,7 +239,7 @@ function enterRoom(res) {
 }
 
 async function leaveRoom() {
-  const inGame = room.state && (/^[mc]_/.test(room.state.phase) || screenKindFor(room.state) === 'game');
+  const inGame = room.state && (/^[mcr]_/.test(room.state.phase) || screenKindFor(room.state) === 'game');
   if (inGame && !(await confirm('Выйти из игры? Партия продолжится без вас.'))) return;
   const code = room.code;
   showHome();

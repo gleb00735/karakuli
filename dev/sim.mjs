@@ -234,3 +234,38 @@ async function wait0(ms, who, code) {
   assert.equal(s.state.checkers.winner, 'b');
   console.log('CHECKERS GAME OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
 }
+
+// ─── Гонки ─────────────────────────────────────────────────────────────────
+{
+  const ids = [51, 52, 53];
+  const code = (await ep('createLobby', { mode: 'race' }, 51)).state.code;
+  for (const u of ids.slice(1)) await ep('joinLobby', { code }, u);
+  await ep('settings', { code, track: 'canyon' }, 51);
+  let s = await ep('startGame', { code }, 51);
+  assert.equal(s.state.phase, 'r_countdown');
+  assert.equal(s.state.race.track, 'canyon');
+  const all = async (extra = () => ({})) => { for (const u of ids) await ep('sync', { code, ...extra(u) }, u); };
+  skip(4_500); await all();
+  s = await ep('sync', { code }, 51);
+  assert.equal(s.state.phase, 'r_race');
+  // Едем: позиции видны соперникам.
+  skip(1000);
+  await all((u) => ({ race: { x: u, y: 2, a: 0, v: 100, lap: 0, s: u * 10 } }));
+  s = await ep('sync', { code }, 51);
+  assert.deepEqual(s.state.race.cars.map((c) => c[0]).sort(), [52, 53]);
+  assert.deepEqual(s.state.race.order, [53, 52, 51]);
+  // Невозможно быстрый финиш не засчитывается.
+  await ep('sync', { code, race: { x: 0, y: 0, lap: 3, s: 0, fin: 5000 } }, 52);
+  assert.equal((await ep('sync', { code }, 52)).state.race.myFinish, null);
+  // Честный финиш 52 → у остальных 30 с.
+  for (let i = 0; i < 9; i++) { skip(5000); await all((u) => ({ race: { x: 0, y: 0, lap: 1, s: u } })); }
+  await ep('sync', { code, race: { x: 0, y: 0, lap: 3, s: 0, fin: 44_000 } }, 52);
+  s = await ep('sync', { code }, 51);
+  assert.ok(s.state.deadline - s.state.serverNow <= 30_000);
+  await ep('sync', { code, race: { x: 0, y: 0, lap: 3, s: 0, fin: 46_000 } }, 51);
+  for (let i = 0; i < 7; i++) { skip(5000); await all((u) => (u === 53 ? { race: { x: 0, y: 0, lap: 2, s: 5 } } : {})); }
+  s = await ep('sync', { code }, 51);
+  assert.equal(s.state.phase, 'final');
+  assert.deepEqual(s.state.race.results, [[52, 44000], [51, 46000], [53, null]]);
+  console.log('RACE OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
+}
