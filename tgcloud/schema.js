@@ -25,9 +25,9 @@ export const lobbies = table('lobbies', {
   phaseStart:  integer('phase_start'),
   deadline:    integer('deadline'),
   lastResult:  text('last_result'),
-  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия».
+  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия», 'checkers' — «Шашки».
   mode:        text('mode').notNull().default('draw'),
-  // Состояние партии в мафию (роли, живые, проверки комиссара, события) — JSON.
+  // Состояние партии в мафию или шашки (роли и события / доска и ход) — JSON.
   mstate:      text('mstate'),
   created:     integer('created_at').notNull(),
   updated:     integer('updated_at').notNull(),

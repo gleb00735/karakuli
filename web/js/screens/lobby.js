@@ -14,6 +14,7 @@ export function mafiaLineup(n) {
 export const GAMES = {
   draw: { title: 'Каракули', sub: 'Рисуй и угадывай', players: '2–3 игрока', emoji: '🎨' },
   mafia: { title: 'Мафия', sub: 'Найди мафию среди друзей', players: '4–8 игроков', emoji: '🕵️' },
+  checkers: { title: 'Шашки', sub: 'Русские шашки один на один', players: '2 игрока', emoji: '⚪' },
 };
 
 export function qrCard(code) {
@@ -147,14 +148,18 @@ export class LobbyScreen {
       voiceCard(this.voice, s),
       h('div.section-title', null, h('div.h2', null, 'Партия'), !isHost && h('div.faint.small', null, 'настраивает хозяин')),
       h('div.card.settings', null,
-        h('div.setting', null, h('div.lbl', null, 'Игра'),
-          seg(['draw', 'mafia'], s.mode, (v) => GAMES[v].title, (v) => this.actions.settings({ mode: v }))),
+        h('div.setting.wide', null, h('div.lbl', null, 'Игра'),
+          seg(['draw', 'mafia', 'checkers'], s.mode, (v) => GAMES[v].title, (v) => this.actions.settings({ mode: v }))),
         s.mode === 'draw' && [
           h('div.setting', null, h('div.lbl', null, 'Раунды'),
             seg([1, 2, 3], s.rounds, String, (v) => this.actions.settings({ rounds: v }))),
           h('div.setting', null, h('div.lbl', null, 'На рисунок'),
             seg([60, 80, 100], s.drawTime, (v) => v + ' с', (v) => this.actions.settings({ drawTime: v }))),
         ],
+        s.mode === 'checkers' && h('div.mafia-info', null,
+          h('div', null, 'Русские шашки: бить обязательно, простые бьют и назад, дамки ходят на любое расстояние.'),
+          h('div.faint.small', null, 'Цвета выпадают случайно, в реванше меняются.'),
+        ),
         s.mode === 'mafia' && h('div.mafia-info', null,
           h('div', null, n >= s.minPlayers ? `${n} игроков: ${mafiaLineup(n)}.` : `Для мафии нужно от ${s.minPlayers} до ${s.maxPlayers} игроков.`),
           h('div.faint.small', null, 'Ведущий — сама игра. Ночью мафия выбирает жертву, комиссар проверяет, доктор лечит; днём город голосует.'),

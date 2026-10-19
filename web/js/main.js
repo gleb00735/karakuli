@@ -8,6 +8,7 @@ import { LobbyScreen } from './screens/lobby.js';
 import { GameScreen } from './screens/game.js';
 import { FinalScreen } from './screens/final.js';
 import { MafiaScreen } from './screens/mafia.js';
+import { CheckersScreen } from './screens/checkers.js';
 import { Voice } from './voice.js';
 
 setup();
@@ -60,6 +61,7 @@ function showLoading() {
 function screenKindFor(s) {
   if (s.phase === 'lobby') return 'lobby';
   if (s.phase.startsWith('m_') || (s.phase === 'final' && s.mode === 'mafia')) return 'mafia';
+  if (s.phase.startsWith('c_') || (s.phase === 'final' && s.mode === 'checkers')) return 'checkers';
   if (s.phase === 'final') return 'final';
   return 'game';
 }
@@ -70,10 +72,10 @@ function render() {
   const kind = screenKindFor(s);
   if (kind !== room.screenKind || (kind === 'game' && room.screen.roundNo !== s.roundNo)) {
     const ctx = { room, actions, serverNow, voice };
-    const Screen = { lobby: LobbyScreen, final: FinalScreen, mafia: MafiaScreen, game: GameScreen }[kind];
+    const Screen = { lobby: LobbyScreen, final: FinalScreen, mafia: MafiaScreen, checkers: CheckersScreen, game: GameScreen }[kind];
     mount(new Screen(ctx), kind);
   }
-  closingGuard(kind === 'game' || (kind === 'mafia' && s.phase !== 'final'));
+  closingGuard(kind === 'game' || ((kind === 'mafia' || kind === 'checkers') && s.phase !== 'final'));
   room.screen.update(s);
 }
 
@@ -230,7 +232,7 @@ function enterRoom(res) {
 }
 
 async function leaveRoom() {
-  const inGame = room.state && (room.state.phase.startsWith('m_') || screenKindFor(room.state) === 'game');
+  const inGame = room.state && (/^[mc]_/.test(room.state.phase) || screenKindFor(room.state) === 'game');
   if (inGame && !(await confirm('Выйти из игры? Партия продолжится без вас.'))) return;
   const code = room.code;
   showHome();
@@ -285,6 +287,7 @@ const actions = {
   mafia: (kind, target) => act('mafiaAct', { kind, target }),
   chat: (text) => act('chat', { text }),
   toLobby: () => act('toLobby'),
+  checkers: (kind, path) => act('checkersAct', { kind, path }),
   pick: (index) => act('pickWord', { index }),
   guess: (text) => act('guess', { text }),
   flush: kick,

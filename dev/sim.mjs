@@ -200,3 +200,37 @@ async function wait0(ms, who, code) {
   s = await ep('startGame', { code }, 31);
   assert.equal(s.state.phase, 'm_roles');
 }
+
+// ─── Шашки ─────────────────────────────────────────────────────────────────
+{
+  const [X, Y, Z] = [41, 42, 43];
+  const code = (await ep('createLobby', { mode: 'checkers' }, X)).state.code;
+  await ep('joinLobby', { code }, Y);
+  assert.equal((await ep('joinLobby', { code }, Z)).error, 'FULL');
+  let s = await ep('startGame', { code }, X);
+  assert.equal(s.state.phase, 'c_play');
+  const c = s.state.checkers;
+  const white = c.white, black = c.black;
+  const ws = await ep('sync', { code }, white);
+  assert.equal(ws.state.checkers.moves.length, 7);
+  assert.equal((await ep('sync', { code }, black)).state.checkers.moves, undefined);
+  assert.equal((await ep('checkersAct', { code, kind: 'move', path: [40, 33] }, black)).error, 'NOT_YOUR_TURN');
+  assert.equal((await ep('checkersAct', { code, kind: 'move', path: [40, 0] }, white)).error, 'ILLEGAL');
+  // Несколько ходов первыми допустимыми вариантами.
+  for (let i = 0; i < 6; i++) {
+    const who = i % 2 ? black : white;
+    const mv = (await ep('sync', { code }, who)).state.checkers.moves[0];
+    s = await ep('checkersAct', { code, kind: 'move', path: mv }, who);
+  }
+  assert.equal(s.state.checkers.turn, 'w');
+  await ep('checkersAct', { code, kind: 'draw' }, white);
+  s = await ep('checkersAct', { code, kind: 'accept' }, black);
+  assert.equal(s.state.phase, 'final');
+  assert.equal(s.state.checkers.winner, 'draw');
+  // Реванш: цвета меняются.
+  s = await ep('startGame', { code }, X);
+  assert.equal(s.state.checkers.white, black);
+  s = await ep('checkersAct', { code, kind: 'resign' }, black);
+  assert.equal(s.state.checkers.winner, 'b');
+  console.log('CHECKERS GAME OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
+}

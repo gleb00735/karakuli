@@ -65,6 +65,7 @@ export class HomeScreen {
       h('div.muted.center', null, 'Игру можно поменять в комнате'),
       card('draw'),
       card('mafia'),
+      card('checkers'),
     ));
   }
 

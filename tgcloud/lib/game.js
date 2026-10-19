@@ -13,14 +13,17 @@ import {
   isActive, isGone, parse, addMessage, transition, dropPlayers,
 } from './core.js';
 import { MAFIA_MIN, MAFIA_MAX, startMafia, mafiaAdvance, mafiaAct, mafiaChat, mafiaView } from './mafia.js';
+import { startCheckers, checkersAdvance, checkersAct, checkersView } from './checkers.js';
 
 export { begin, caller, fail, loadLobby };
 
 export const MAX_PLAYERS = 3;
 export const MIN_PLAYERS = 2;
-const MODES = ['draw', 'mafia'];
-const maxPlayers = (lobby) => (lobby.mode === 'mafia' ? MAFIA_MAX : MAX_PLAYERS);
-const minPlayers = (lobby) => (lobby.mode === 'mafia' ? MAFIA_MIN : MIN_PLAYERS);
+const MODES = ['draw', 'mafia', 'checkers'];
+const LIMITS = { draw: [MIN_PLAYERS, MAX_PLAYERS], mafia: [MAFIA_MIN, MAFIA_MAX], checkers: [2, 2] };
+const GAME_TITLES = { draw: '«Каракули»', mafia: '«Мафию»', checkers: '«Шашки»' };
+const minPlayers = (lobby) => (LIMITS[lobby.mode] || LIMITS.draw)[0];
+const maxPlayers = (lobby) => (LIMITS[lobby.mode] || LIMITS.draw)[1];
 export const PICK_MS = 15_000;
 export const REVEAL_MS = 6_000;
 const LOBBY_TTL_MS = 6 * 3600_000;
@@ -213,8 +216,8 @@ export async function advance(lobby) {
       return { lobby, players };
     }
 
-    if (lobby.phase.startsWith('m_')) {
-      next = await mafiaAdvance(lobby, players, t);
+    if (lobby.phase.startsWith('m_') || lobby.phase.startsWith('c_')) {
+      next = await (lobby.phase.startsWith('m_') ? mafiaAdvance : checkersAdvance)(lobby, players, t);
       if (next === undefined) return { lobby, players };
     } else if (inGame && players.filter((p) => !isGone(p, t)).length < MIN_PLAYERS) {
       next = await abort(lobby, players, t);
@@ -346,7 +349,7 @@ export async function updateSettings(user, code, { rounds, drawTime, mode }) {
   if (DRAW_TIME_OPTIONS.includes(drawTime)) changes.draw_time = drawTime;
   if (MODES.includes(mode) && mode !== lobby.mode) {
     const n = (await loadPlayers(lobby.id)).length;
-    if (mode === 'draw' && n > MAX_PLAYERS) fail('TOO_MANY', `В «Каракули» играют до ${MAX_PLAYERS} человек, а в комнате ${n}`);
+    if (n > LIMITS[mode][1]) fail('TOO_MANY', `В ${GAME_TITLES[mode]} играют до ${LIMITS[mode][1]} человек, а в комнате ${n}`);
     changes.mode = mode;
     changes.last_result = null;
   }
@@ -362,8 +365,10 @@ export async function startGame(user, code) {
   if (active.length < minPlayers(lobby)) fail('NOT_ENOUGH', `Нужно хотя бы ${minPlayers(lobby)} игрока в сети`);
   // Кто не в сети в момент старта — выбывает из комнаты.
   await dropPlayers(lobby, players.filter((p) => !isActive(p, t)));
-  if (lobby.mode === 'mafia') {
-    if (!(await startMafia(lobby, active.map((p) => p.user_id)))) fail('CONFLICT', 'Попробуйте ещё раз');
+  if (lobby.mode === 'mafia' || lobby.mode === 'checkers') {
+    if (active.length > maxPlayers(lobby)) fail('TOO_MANY', `Здесь играют не больше ${maxPlayers(lobby)} человек`);
+    const start = lobby.mode === 'mafia' ? startMafia : startCheckers;
+    if (!(await start(lobby, active.map((p) => p.user_id)))) fail('CONFLICT', 'Попробуйте ещё раз');
     return;
   }
   const order = active.map((p) => p.user_id);
@@ -432,6 +437,11 @@ export async function backToLobby(user, code) {
 export async function mafiaAction(user, code, kind, target) {
   const { lobby } = await enter(user, code);
   await mafiaAct(lobby, user, kind, target);
+}
+
+export async function checkersAction(user, code, kind, path) {
+  const { lobby, players } = await enter(user, code);
+  await checkersAct(lobby, players, user, kind, path);
 }
 
 export async function chat(user, code, text) {
@@ -532,6 +542,7 @@ export async function view(lobby, players, userId) {
   }
   if (lobby.phase === 'reveal') state.result = parse(lobby.last_result, null);
   if (lobby.mode === 'mafia' && (lobby.phase.startsWith('m_') || lobby.phase === 'final')) state.mafia = await mafiaView(lobby, userId);
+  if (lobby.mode === 'checkers' && (lobby.phase.startsWith('c_') || lobby.phase === 'final')) state.checkers = checkersView(lobby, userId);
   if (lobby.phase === 'lobby') {
     const last = parse(lobby.last_result, null);
     if (last && last.aborted) state.notice = { aborted: true, names: last.names || [], ids: last.ids || [] };

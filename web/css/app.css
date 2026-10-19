@@ -799,3 +799,73 @@ img { display: block; }
 .rc-mates { font-size: 14px; font-weight: 900; color: var(--coral); }
 .final-ov .gain .m-tag { flex: none; }
 .mp-tags .m-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* ─── Шашки ───────────────────────────────────────────────── */
+.setting.wide { flex-direction: column; align-items: stretch; gap: 8px; }
+.setting.wide .seg button { flex: 1; }
+.checkers { gap: 8px; }
+.ck-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.ck-board {
+  position: relative;
+  display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr);
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 0 0 6px #8a5a3b, 0 0 0 8px #6d4329, var(--shadow-lg);
+}
+.ck-sq { position: relative; background: #f6e3c4; }
+.ck-sq.dark { background: #b9805a; cursor: pointer; }
+.ck-sq.last { background: #d9a94e; }
+.ck-sq.dark.last::after { content: ''; position: absolute; inset: 0; background: rgba(255, 220, 120, .25); }
+.ck-sq.can { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .55); }
+.ck-sq.sel { box-shadow: inset 0 0 0 4px var(--violet); }
+.ck-sq.dest::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 30%; height: 30%;
+  transform: translate(-50%, -50%); border-radius: 50%;
+  background: var(--mint); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mint) 35%, transparent);
+  animation: pop-in .2s;
+}
+.ck-layer { position: absolute; inset: 0; pointer-events: none; }
+.ck-piece {
+  position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%;
+  transition: transform .19s cubic-bezier(.3, .7, .4, 1), opacity .3s, scale .3s;
+  display: grid; place-items: center;
+}
+.ck-piece::before {
+  content: ''; position: absolute; inset: 11%; border-radius: 50%;
+}
+.ck-piece.w::before {
+  background: radial-gradient(circle at 35% 30%, #fffdf8, #efe2cc 60%, #d8c4a3);
+  box-shadow: 0 3px 0 #b79f7c, 0 5px 8px rgba(0, 0, 0, .35), inset 0 0 0 3px rgba(183, 159, 124, .45);
+}
+.ck-piece.b::before {
+  background: radial-gradient(circle at 35% 30%, #5b5277, #2b2540 60%, #17132a);
+  box-shadow: 0 3px 0 #0e0b1a, 0 5px 8px rgba(0, 0, 0, .45), inset 0 0 0 3px rgba(255, 255, 255, .08);
+}
+.ck-piece svg { position: relative; width: 44%; height: 44%; }
+.ck-piece.w svg { color: #d9a12a; }
+.ck-piece.b svg { color: #ffc23d; }
+.ck-piece.can::before { animation: ck-pulse 1.1s infinite; }
+@keyframes ck-pulse { 50% { box-shadow: 0 0 0 4px var(--coral), 0 5px 8px rgba(0, 0, 0, .35); } }
+.ck-piece.gone { opacity: 0; scale: .4; }
+
+.ck-player {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px 8px 8px; border-radius: 18px;
+  background: var(--card); box-shadow: var(--shadow);
+  transition: box-shadow .2s;
+}
+.ck-player .ava { --s: 38px; }
+.ck-player.active { box-shadow: inset 0 0 0 2px var(--mint), var(--shadow); }
+.ck-who { flex: 1; min-width: 0; }
+.ck-name { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ck-sub { display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.ck-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1.5px var(--ink-3); }
+.ck-dot.w { background: #f3e7d2; }
+.ck-dot.b { background: #2b2540; }
+.ck-turn { flex: none; font-size: 12.5px; font-weight: 900; padding: 5px 10px; border-radius: 99px; background: color-mix(in srgb, var(--mint) 18%, var(--card)); color: var(--mint-d); }
+:root[data-theme="dark"] .ck-turn { color: var(--mint); }
+.ck-hint { text-align: center; font-weight: 900; color: var(--ink-2); min-height: 20px; }
+.ck-hint.warn { color: var(--coral); }
+.ck-controls .row .btn { flex: 1; }
+.ck-offer { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; text-align: center; font-weight: 800; background: color-mix(in srgb, var(--sun) 18%, var(--card)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sun) 50%, transparent); }
+.ck-offer .row .btn { flex: 1; }
+.game-card.checkers .gc-emoji { background: #f6e3c4; }
