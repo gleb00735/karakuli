@@ -20,6 +20,17 @@ const send = (res, code, body, type = 'application/json') => {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 };
 
+// Платформа не умеет возвращать объекты с ключами-числами (например, id
+// игроков) — ловим такое здесь, а не после деплоя.
+function assertSerializable(v, path) {
+  if (!v || typeof v !== 'object') return;
+  if (Array.isArray(v)) return v.forEach((x, i) => assertSerializable(x, `${path}[${i}]`));
+  for (const k of Object.keys(v)) {
+    if (/^\d+$/.test(k)) throw new Error(`Ключ-число «${k}» в ответе: ${path}`);
+    assertSerializable(v[k], `${path}.${k}`);
+  }
+}
+
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (req.method === 'POST' && url.pathname.startsWith('/api/')) {
@@ -33,6 +44,7 @@ http.createServer(async (req, res) => {
     try {
       const mod = await import(join(root, 'tgcloud/endpoints', name + '.js'));
       const result = await mod.default(JSON.parse(body || '{}'), { initData: { user } });
+      assertSerializable(result, name);
       return send(res, 200, { ok: true, result });
     } catch (e) {
       if (e instanceof EndpointError) return send(res, 400, { ok: false, error_type: 'ENDPOINT_ERROR', description: e.description, parameters: e.parameters });

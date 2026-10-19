@@ -73,6 +73,7 @@ export class MafiaScreen {
   update(s) {
     const m = s.mafia;
     if (!m) return;
+    unpack(m);
     const night = s.phase === 'm_night' || s.phase === 'm_roles';
     this.el.classList.toggle('night', night);
     // Ночью город спит — микрофоны выключены у всех.
@@ -345,4 +346,12 @@ export class MafiaScreen {
     const r = ROLES[m.role] || ROLES.civ;
     toast(`${r.emoji} ${r.name}: ${r.text}`, '', 5000);
   }
+}
+
+// Сервер присылает словари с id игроков списками пар — собираем обратно.
+function unpack(m) {
+  if (m.unpacked) return;
+  m.unpacked = true;
+  for (const k of ['roles', 'checks', 'votes', 'picks']) if (Array.isArray(m[k])) m[k] = Object.fromEntries(m[k]);
+  if (m.vote && Array.isArray(m.vote.tally)) m.vote.tally = Object.fromEntries(m.vote.tally);
 }

@@ -277,6 +277,10 @@ export async function mafiaChat(lobby, user, name, text) {
 
 // ─── Состояние для клиента ─────────────────────────────────────────────────
 
+// Платформа не может вернуть объект с ключами-числами (id игроков),
+// поэтому такие словари уходят клиенту списками пар [id, значение].
+const pairs = (obj) => Object.entries(obj || {});
+
 // Каждый видит свою роль, роли выбывших и (мафия) своих сообщников;
 // после финала — все роли.
 export async function mafiaView(lobby, userId) {
@@ -290,13 +294,14 @@ export async function mafiaView(lobby, userId) {
     if (final || n === userId || !state.alive.includes(n) || (role === 'mafia' && state.roles[id] === 'mafia')) roles[id] = state.roles[id];
   }
   const out = {
-    role, alive: state.alive, round: state.round, roles,
-    night: state.night, vote: state.vote, winner: state.winner, left: state.left,
+    role, alive: state.alive, round: state.round, roles: pairs(roles),
+    night: state.night, vote: state.vote && { ...state.vote, tally: pairs(state.vote.tally) },
+    winner: state.winner, left: state.left,
     ids: Object.keys(state.roles).map(Number),
     total: Object.keys(state.roles).length,
     mafiaCount: Object.values(state.roles).filter((r) => r === 'mafia').length,
   };
-  if (role === 'com') out.checks = state.checks;
+  if (role === 'com') out.checks = pairs(state.checks);
   if (role === 'doc') out.lastHeal = state.lastHeal;
 
   const key = stepKey(lobby.phase, state.round);
@@ -306,9 +311,9 @@ export async function mafiaView(lobby, userId) {
     out.myMove = mine ? mine.target : null;
     out.done = mine ? true : false;
     if (lobby.phase === 'm_roles' || lobby.phase === 'm_day') out.readyIds = moves.map((m) => m.user_id);
-    if (lobby.phase === 'm_vote') out.votes = Object.fromEntries(moves.map((m) => [m.user_id, m.target]));
+    if (lobby.phase === 'm_vote') out.votes = moves.map((m) => [m.user_id, m.target]);
     if (lobby.phase === 'm_night' && role === 'mafia') {
-      out.picks = Object.fromEntries(moves.filter((m) => state.roles[m.user_id] === 'mafia').map((m) => [m.user_id, m.target]));
+      out.picks = moves.filter((m) => state.roles[m.user_id] === 'mafia').map((m) => [m.user_id, m.target]);
     }
   }
   return out;

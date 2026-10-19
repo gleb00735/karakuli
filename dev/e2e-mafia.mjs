@@ -71,7 +71,7 @@ while (true) {
   await A.waitForSelector('.m-overlay', { timeout: 15000 });
   await wait(900);
   if (round === 1) await shot(A, 'm5-morning');
-  await A.waitForFunction(() => window.__voice.state.phase === 'm_day', null, { timeout: 15000 });
+  await A.waitForFunction(() => ['m_day', 'final'].includes(window.__voice.state.phase), null, { timeout: 15000 });
   const s2 = await st(A);
   if (s2.phase === 'final') break;
   const speaker = P.find((p) => s2.mafia.alive.includes(p.uid));
