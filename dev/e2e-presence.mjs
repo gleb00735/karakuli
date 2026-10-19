@@ -54,7 +54,7 @@ await A.page.click('text=Начать игру');
 await A.page.waitForSelector('.overlay');
 await B.ctx.route('**/api/**', (r) => r.abort());
 const t1 = Date.now();
-await A.page.waitForSelector('.notice', { timeout: 30000 });
+await A.page.waitForSelector('.notice', { timeout: 45000 });
 console.log('abort after', Math.round((Date.now() - t1) / 1000), 's');
 await wait(500);
 await A.page.screenshot({ path: `${OUT}/p3-aborted.png` });

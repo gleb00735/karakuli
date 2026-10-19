@@ -1,7 +1,7 @@
 // ICE-серверы для голосового чата. Короткоживущие данные TURN выдаются
 // по секретному ключу, который остаётся на сервере.
 import { fetch } from 'sdk';
-import { caller } from '../lib/game.js';
+import { begin } from '../lib/game.js';
 import { CLOUDFLARE_TURN_KEY_ID, CLOUDFLARE_TURN_API_TOKEN, STATIC_TURN } from '../lib/secrets.js';
 
 const STUN = [
@@ -16,7 +16,7 @@ const dropPort53 = (servers) => servers.map((s) => ({
 })).filter((s) => s.urls.length);
 
 export default async function (input, ctx) {
-  caller(ctx);
+  await begin(ctx);
   let turn = STATIC_TURN.slice();
   if (CLOUDFLARE_TURN_KEY_ID && CLOUDFLARE_TURN_API_TOKEN) {
     try {

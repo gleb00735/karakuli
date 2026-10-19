@@ -101,8 +101,11 @@ console.log('ALL OK');
   await ep('startGame', { code }, X);
   await wait0(12_000, [X], code);
   s = await ep('sync', { code }, X);
+  assert.notEqual(s.state.phase, 'lobby', 'короткий обрыв связи не прерывает игру');
+  await wait0(15_000, [X], code);
+  s = await ep('sync', { code }, X);
   assert.equal(s.state.phase, 'lobby');
-  assert.deepEqual(s.state.notice, { aborted: true, names: ['U12'] });
+  assert.deepEqual(s.state.notice, { aborted: true, names: ['U12'], ids: [Y] });
   assert.ok(s.messages.some((m) => m.kind === 'abort'));
   // Y вернулся — снова в сети, сообщение «вернулся».
   s = await ep('sync', { code }, Y);

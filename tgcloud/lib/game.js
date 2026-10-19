@@ -19,11 +19,30 @@ export const REVEAL_MS = 6_000;
 // а вне партии через LOBBY_DROP_MS убирается из комнаты.
 export const STALE_MS = 10_000;
 export const LOBBY_DROP_MS = 30_000;
+// Посреди партии игрока считаем ушедшим (пропуск хода, прерывание игры)
+// только после более долгой тишины: короткие обрывы связи не должны ломать игру.
+export const GAME_GONE_MS = 25_000;
 const LOBBY_TTL_MS = 6 * 3600_000;
 const ROUND_OPTIONS = [1, 2, 3];
 const DRAW_TIME_OPTIONS = [60, 80, 100];
 
-const now = () => Date.now();
+// Запросы обрабатывают разные серверы платформы, и их часы расходятся на
+// секунды. Поэтому время берётся из базы данных — это единые часы для всех:
+// в начале каждого запроса begin() вычисляет поправку к локальным часам.
+let clockOffset = 0;
+const now = () => Date.now() + clockOffset;
+
+async function syncClock() {
+  const r = await one("SELECT CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) AS t");
+  if (r && r.t) clockOffset = r.t - Date.now();
+}
+
+// Начало обработки любого запроса Mini App: сверка часов и проверка пользователя.
+export async function begin(ctx) {
+  const user = caller(ctx);
+  await syncClock();
+  return user;
+}
 
 export const fail = (code, description) => {
   throw new EndpointError(description, { code });
@@ -113,6 +132,7 @@ const loadLobbyById = (id) => one('SELECT * FROM lobbies WHERE id = :id', { id }
 const loadPlayers = (lobbyId) => many('SELECT * FROM players WHERE lobby_id = :lobbyId ORDER BY seat', { lobbyId });
 
 const isActive = (p, t) => p.last_seen >= t - STALE_MS;
+const isGone = (p, t) => p.last_seen < t - GAME_GONE_MS;
 const parse = (s, fallback) => { try { return s ? JSON.parse(s) : fallback; } catch { return fallback; } };
 
 async function addMessage(lobby, kind, fields = {}) {
@@ -149,7 +169,7 @@ async function startTurn(lobby, players, turn) {
   // Пропускаем ходы игроков, которые вышли или пропали.
   while (turn < lobby.turn_total) {
     const drawer = players.find((p) => p.user_id === order[turn % order.length]);
-    if (drawer && isActive(drawer, t)) break;
+    if (drawer && !isGone(drawer, t)) break;
     turn++;
   }
   if (turn >= lobby.turn_total) return finish(lobby);
@@ -201,10 +221,11 @@ async function endRound(lobby, players) {
 // Партия прервана: игроков осталось меньше двух. Комната возвращается в лобби
 // с пометкой, кто ушёл.
 async function abort(lobby, players, t) {
-  const names = players.filter((p) => !isActive(p, t)).map((p) => p.name);
+  const gone = players.filter((p) => isGone(p, t));
+  const names = gone.map((p) => p.name);
   const next = await transition(lobby, {
     phase: 'lobby', drawer_id: null, word: null, choices: null, phase_start: t, deadline: null,
-    last_result: JSON.stringify({ aborted: true, names }),
+    last_result: JSON.stringify({ aborted: true, names, ids: gone.map((p) => p.user_id) }),
   });
   if (next) await addMessage(next, 'abort', { body: names.join(', ') });
   return next;
@@ -263,11 +284,11 @@ export async function advance(lobby) {
       return { lobby, players };
     }
 
-    if (inGame && active.length < MIN_PLAYERS) {
+    if (inGame && players.filter((p) => !isGone(p, t)).length < MIN_PLAYERS) {
       next = await abort(lobby, players, t);
     } else if (lobby.phase === 'pick') {
       const drawer = players.find((p) => p.user_id === lobby.drawer_id);
-      if (!drawer || !isActive(drawer, t)) next = await startTurn(lobby, players, lobby.turn + 1);
+      if (!drawer || isGone(drawer, t)) next = await startTurn(lobby, players, lobby.turn + 1);
       else if (t >= lobby.deadline) {
         const choices = parse(lobby.choices, []);
         next = await startDraw(lobby, choices[Math.floor(Math.random() * choices.length)] || pickChoices([])[0]);
@@ -276,7 +297,7 @@ export async function advance(lobby) {
       const drawer = players.find((p) => p.user_id === lobby.drawer_id);
       const guessers = active.filter((p) => p.user_id !== lobby.drawer_id);
       const allGuessed = guessers.length > 0 && guessers.every((p) => p.guessed_at);
-      if (t >= lobby.deadline || allGuessed || !drawer || !isActive(drawer, t)) next = await endRound(lobby, players);
+      if (t >= lobby.deadline || allGuessed || !drawer || isGone(drawer, t)) next = await endRound(lobby, players);
       else return { lobby, players };
     } else if (lobby.phase === 'reveal') {
       if (t >= lobby.deadline) next = await startTurn(lobby, players, lobby.turn + 1);
@@ -547,7 +568,7 @@ export function view(lobby, players, userId) {
   if (lobby.phase === 'reveal') state.result = parse(lobby.last_result, null);
   if (lobby.phase === 'lobby') {
     const last = parse(lobby.last_result, null);
-    if (last && last.aborted) state.notice = { aborted: true, names: last.names || [] };
+    if (last && last.aborted) state.notice = { aborted: true, names: last.names || [], ids: last.ids || [] };
   }
   return state;
 }

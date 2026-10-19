@@ -1,7 +1,7 @@
-import { caller, startGame, snapshot } from '../lib/game.js';
+import { begin, startGame, snapshot } from '../lib/game.js';
 
 export default async function (input, ctx) {
-  const user = caller(ctx);
+  const user = await begin(ctx);
   await startGame(user, input.code);
   return snapshot(user, input.code, input);
 }

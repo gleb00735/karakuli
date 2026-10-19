@@ -99,7 +99,9 @@ export class LobbyScreen {
     const offline = s.players.filter((p) => !(p.active || p.id === s.me));
     const notice = s.notice && !this.noticeHidden && h('div.notice', null,
       h('div.notice-t', null, 'Игра прервана'),
-      h('div', null, s.notice.names.length
+      h('div', null, (s.notice.ids || []).includes(s.me)
+        ? 'Вы долго были не в сети, и партия прервалась. Начните новую, когда все будут на месте.'
+        : s.notice.names.length
         ? `${s.notice.names.length > 1 ? 'Игроки' : 'Игрок'} ${s.notice.names.join(', ')} ${s.notice.names.length > 1 ? 'вышли' : 'вышел'} из игры — продолжать не с кем. Соберите компанию и начните заново.`
         : 'Не хватило игроков. Соберите компанию и начните заново.'),
       h('button.notice-x', { 'aria-label': 'Закрыть', onclick: () => { this.noticeHidden = true; this.key = ''; this.update(this.room.state); } }, icon('close')),

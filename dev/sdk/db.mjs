@@ -17,7 +17,9 @@ export async function run(query, params = {}) {
   return { rowsAffected: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid), rows: [] };
 }
 export async function all(query, params = {}) { return norm(conn.prepare(query).all(params)); }
-export async function get(query, params = {}) { const r = conn.prepare(query).get(params); return r ? { ...r } : null; }
+// Часы «базы» в тестах — это Date.now(), чтобы симуляция могла сдвигать время.
+export async function get(query, params = {}) {
+  if (query.includes("julianday('now')")) return { t: Date.now() }; const r = conn.prepare(query).get(params); return r ? { ...r } : null; }
 
 class Col {
   constructor(name, type) { this.name = name; this.type = type; this.mods = []; }

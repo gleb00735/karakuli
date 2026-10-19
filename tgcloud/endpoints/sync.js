@@ -1,9 +1,9 @@
 // Основной цикл клиента: отметиться, отправить штрихи (если рисует),
 // получить состояние комнаты и всё новое с прошлого раза.
-import { caller, enter, pushOps, pushSignals, view, feed } from '../lib/game.js';
+import { begin, enter, pushOps, pushSignals, view, feed } from '../lib/game.js';
 
 export default async function (input, ctx) {
-  const user = caller(ctx);
+  const user = await begin(ctx);
   const { lobby, players } = await enter(user, input.code);
   if (input.ops) await pushOps(lobby, user, input.ops);
   if (input.signals) await pushSignals(lobby, players, user, input.signals);
