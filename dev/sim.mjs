@@ -136,3 +136,67 @@ async function wait0(ms, who, code) {
   assert.equal(again.signals.length, 0);
   console.log('VOICE SIGNALING OK');
 }
+
+// ─── Мафия ─────────────────────────────────────────────────────────────────
+{
+  const ids = [31, 32, 33, 34, 35];
+  const code = (await ep('createLobby', { mode: 'mafia' }, 31)).state.code;
+  for (const u of ids.slice(1)) await ep('joinLobby', { code }, u);
+  let s = await ep('sync', { code }, 31);
+  assert.equal(s.state.mode, 'mafia');
+  assert.equal(s.state.maxPlayers, 8);
+  assert.equal((await ep('settings', { code, mode: 'draw' }, 31)).error, 'TOO_MANY');
+  const all = async () => { for (const u of ids) await ep('sync', { code }, u); };
+  const wait1 = async (ms) => { while (ms > 0) { const d = Math.min(ms, 5000); skip(d); ms -= d; await all(); } };
+
+  s = await ep('startGame', { code }, 31);
+  assert.equal(s.state.phase, 'm_roles');
+  const role = {};
+  for (const u of ids) role[u] = (await ep('sync', { code }, u)).state.mafia.role;
+  console.log('roles', JSON.stringify(role));
+  const by = (r) => ids.filter((u) => role[u] === r);
+  assert.equal(by('mafia').length, 1);
+  // Мирный не видит чужих ролей.
+  const civ = by('civ')[0];
+  assert.deepEqual(Object.keys((await ep('sync', { code }, civ)).state.mafia.roles), [String(civ)]);
+  for (const u of ids) await ep('mafiaAct', { code, kind: 'ack' }, u);
+  s = await ep('sync', { code }, 31);
+  assert.equal(s.state.phase, 'm_night');
+
+  // Ночь 1: мафия бьёт мирного, доктор лечит его же → спасён; комиссар проверяет мафию.
+  const [maf] = by('mafia'), [com] = by('com'), [doc] = by('doc');
+  assert.equal((await ep('mafiaAct', { code, kind: 'night', target: maf }, maf)).error, 'BAD_TARGET');
+  assert.equal((await ep('mafiaAct', { code, kind: 'night', target: maf }, civ)).error, 'NO_ROLE');
+  assert.equal((await ep('chat', { code, text: 'привет' }, civ)).error, 'NIGHT');
+  await ep('chat', { code, text: 'кого бьём?' }, maf);
+  await ep('mafiaAct', { code, kind: 'night', target: civ }, maf);
+  await ep('mafiaAct', { code, kind: 'night', target: maf }, com);
+  s = await ep('mafiaAct', { code, kind: 'night', target: civ }, doc);
+  assert.equal(s.state.phase, 'm_morning');
+  assert.deepEqual(s.state.mafia.night, { round: 1, killed: null, saved: true });
+  s = await ep('sync', { code }, com);
+  assert.deepEqual(s.state.mafia.checks, { [maf]: 'mafia' });
+  assert.ok(!(await ep('sync', { code }, civ)).messages.some((m) => m.kind === 'mchat'), 'мирный не видит чат мафии');
+
+  await wait1(10_000);
+  s = await ep('sync', { code }, civ);
+  assert.equal(s.state.phase, 'm_day');
+  await ep('chat', { code, text: 'это он!' }, com);
+  for (const u of ids) await ep('mafiaAct', { code, kind: 'ready' }, u);
+  s = await ep('sync', { code }, civ);
+  assert.equal(s.state.phase, 'm_vote');
+  for (const u of ids) await ep('mafiaAct', { code, kind: 'vote', target: u === maf ? com : maf }, u);
+  s = await ep('sync', { code }, civ);
+  assert.equal(s.state.phase, 'm_verdict');
+  assert.equal(s.state.mafia.vote.out, maf);
+  await wait1(10_000);
+  s = await ep('sync', { code }, civ);
+  assert.equal(s.state.phase, 'final');
+  assert.equal(s.state.mafia.winner, 'town');
+  assert.equal(Object.keys(s.state.mafia.roles).length, 5);
+  console.log('MAFIA OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
+
+  // Повтор партии: мафия побеждает, когда сравнялась с мирными (дисконнект тоже выбывает).
+  s = await ep('startGame', { code }, 31);
+  assert.equal(s.state.phase, 'm_roles');
+}

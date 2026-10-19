@@ -4,7 +4,17 @@ import { h, svg, icon, icons, avatar, toast } from '../ui.js';
 import { qrSvg } from '../qr.js';
 import { roomLink, shareRoom, copy, haptic, confirm } from '../tg.js';
 
-const MAX = 3;
+// Состав ролей мафии — как на сервере (lib/mafia.js).
+export function mafiaLineup(n) {
+  const mafia = n >= 6 ? 2 : 1;
+  const civ = Math.max(0, n - mafia - 2);
+  return `${mafia === 1 ? '1 мафия' : '2 мафии'}, комиссар, доктор${civ ? `, ${civ} ${civ === 1 ? 'мирный' : 'мирных'}` : ''}`;
+}
+
+export const GAMES = {
+  draw: { title: 'Каракули', sub: 'Рисуй и угадывай', players: '2–3 игрока', emoji: '🎨' },
+  mafia: { title: 'Мафия', sub: 'Найди мафию среди друзей', players: '4–8 игроков', emoji: '🕵️' },
+};
 
 export function qrCard(code) {
   return h('div.qr-card', null,
@@ -68,10 +78,14 @@ export function seatList(state) {
       host && h('span.tag.host', null, '👑 хозяин'),
     );
   });
-  for (let i = state.players.length; i < MAX; i++) {
+  const free = state.maxPlayers - state.players.length;
+  if (free > 0) {
+    const need = Math.max(0, state.minPlayers - state.players.length);
     seats.push(h('div.seat.empty', null,
       h('div.ph', null, '+'),
-      h('div.nm.faint', null, 'Ждём игрока ', h('span.dots', null, h('span'), h('span'), h('span'))),
+      h('div.nm.faint', null,
+        need ? `Нужно ещё ${need} ` : `Можно ещё ${free} `,
+        h('span.dots', null, h('span'), h('span'), h('span'))),
     ));
   }
   return h('div.seats', null, seats);
@@ -88,7 +102,7 @@ export class LobbyScreen {
 
   update(s) {
     const isHost = s.hostId === s.me;
-    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active, p.voice]), this.voice.mode, s.hostId, s.rounds, s.drawTime, s.notice, this.noticeHidden]);
+    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active, p.voice]), this.voice.mode, s.hostId, s.rounds, s.drawTime, s.mode, s.notice, this.noticeHidden]);
     if (key === this.key) return;
     const prev = this.key ? JSON.parse(this.key)[0].length : s.players.length;
     if (s.players.length > prev) haptic.ok();
@@ -128,21 +142,30 @@ export class LobbyScreen {
       ),
       notice || '',
       qrCard(s.code),
-      h('div.section-title', null, h('div.h2', null, 'Игроки'), h('div.faint.small', null, `${online.length} в сети · ${n} из ${MAX}`)),
+      h('div.section-title', null, h('div.h2', null, 'Игроки'), h('div.faint.small', null, `${online.length} в сети · ${n} из ${s.maxPlayers}`)),
       seatList(s),
       voiceCard(this.voice, s),
       h('div.section-title', null, h('div.h2', null, 'Партия'), !isHost && h('div.faint.small', null, 'настраивает хозяин')),
       h('div.card.settings', null,
-        h('div.setting', null, h('div.lbl', null, 'Раунды'),
-          seg([1, 2, 3], s.rounds, String, (v) => this.actions.settings(v, s.drawTime))),
-        h('div.setting', null, h('div.lbl', null, 'На рисунок'),
-          seg([60, 80, 100], s.drawTime, (v) => v + ' с', (v) => this.actions.settings(s.rounds, v))),
+        h('div.setting', null, h('div.lbl', null, 'Игра'),
+          seg(['draw', 'mafia'], s.mode, (v) => GAMES[v].title, (v) => this.actions.settings({ mode: v }))),
+        s.mode === 'draw' && [
+          h('div.setting', null, h('div.lbl', null, 'Раунды'),
+            seg([1, 2, 3], s.rounds, String, (v) => this.actions.settings({ rounds: v }))),
+          h('div.setting', null, h('div.lbl', null, 'На рисунок'),
+            seg([60, 80, 100], s.drawTime, (v) => v + ' с', (v) => this.actions.settings({ drawTime: v }))),
+        ],
+        s.mode === 'mafia' && h('div.mafia-info', null,
+          h('div', null, n >= s.minPlayers ? `${n} игроков: ${mafiaLineup(n)}.` : `Для мафии нужно от ${s.minPlayers} до ${s.maxPlayers} игроков.`),
+          h('div.faint.small', null, 'Ведущий — сама игра. Ночью мафия выбирает жертву, комиссар проверяет, доктор лечит; днём город голосует.'),
+        ),
       ),
       h('div.spacer'),
       h('div.bottom-bar', null,
         isHost
-          ? h('button.btn.mint', { disabled: online.length < 2, onclick: start },
-              online.length >= 2 ? [svg(icons.play), 'Начать игру'] : n < 2 ? 'Нужен ещё 1 игрок' : 'Ждём игроков в сети')
+          ? h('button.btn.mint', { disabled: online.length < s.minPlayers, onclick: start },
+              online.length >= s.minPlayers ? [svg(icons.play), 'Начать игру']
+                : n < s.minPlayers ? `Нужно ещё ${s.minPlayers - n}` : 'Ждём игроков в сети')
           : h('div.waiting-pill', null, `Ждём, пока ${host ? host.name : 'хозяин'} начнёт`, h('span.dots', null, h('span'), h('span'), h('span'))),
       ),
     );

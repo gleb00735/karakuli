@@ -77,6 +77,7 @@ export class Voice {
     if (this.mode === LISTEN && mode === MIC) this.closeAll(true);
     this.mode = mode;
     this.muted = false;
+    this.applyMute();
     this.busy = false;
     if (mode === MIC) { haptic.ok(); toast('Вы в голосовом чате', 'ok', 1800); }
     call('voice', { code: this.state.code, voice: mode }).catch(() => {});
@@ -103,13 +104,26 @@ export class Voice {
     this.outbox = [];
     this.state = null;
     this.resetSent = false;
+    this.forced = false;
   }
 
   toggleMute() {
     if (this.mode !== MIC || !this.stream) return;
     this.muted = !this.muted;
-    for (const t of this.stream.getAudioTracks()) t.enabled = !this.muted;
+    this.applyMute();
     haptic.tick();
+    this.render();
+  }
+
+  applyMute() {
+    if (this.stream) for (const t of this.stream.getAudioTracks()) t.enabled = !(this.muted || this.forced);
+  }
+
+  // Принудительное выключение микрофона (ночь в мафии: город спит).
+  setForced(on) {
+    if (!!this.forced === on) return;
+    this.forced = on;
+    this.applyMute();
     this.render();
   }
 
@@ -304,7 +318,7 @@ export class Voice {
       let sum = 0;
       for (const v of m.buf) sum += v * v;
       const rms = Math.sqrt(sum / m.buf.length);
-      const on = rms > SPEAK_LEVEL && !(id === this.me && this.muted);
+      const on = rms > SPEAK_LEVEL && !(id === this.me && (this.muted || this.forced));
       if (on === m.on) continue;
       m.on = on;
       for (const el of document.querySelectorAll(`.ava[data-uid="${id}"]`)) el.classList.toggle('speaking', on);
@@ -316,6 +330,7 @@ export class Voice {
   get look() {
     if (this.mode === OFF) return { cls: 'off', icon: icons.micOff, label: 'Голосовой чат выключен' };
     if (this.mode === LISTEN) return { cls: 'listen', icon: icons.headphones, label: 'Вы только слушаете' };
+    if (this.forced) return { cls: 'muted', icon: icons.micOff, label: 'Ночь: микрофон выключен' };
     if (this.muted) return { cls: 'muted', icon: icons.micOff, label: 'Микрофон выключен' };
     return { cls: 'on', icon: icons.mic, label: 'Микрофон включён' };
   }
@@ -345,7 +360,7 @@ export class Voice {
       }
       return 'Соединяемся…';
     }
-    return this.mode === LISTEN ? 'Вы слушаете' : this.muted ? 'Микрофон выключен' : 'Вас слышат';
+    return this.mode === LISTEN ? 'Вы слушаете' : this.forced ? 'Ночь — микрофоны выключены' : this.muted ? 'Микрофон выключен' : 'Вас слышат';
   }
 }
 

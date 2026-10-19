@@ -7,6 +7,7 @@ import { HomeScreen } from './screens/home.js';
 import { LobbyScreen } from './screens/lobby.js';
 import { GameScreen } from './screens/game.js';
 import { FinalScreen } from './screens/final.js';
+import { MafiaScreen } from './screens/mafia.js';
 import { Voice } from './voice.js';
 
 setup();
@@ -56,21 +57,23 @@ function showLoading() {
   root.replaceChildren(h('div.loading', null, h('div.spinner')));
 }
 
-function screenKindFor(phase) {
-  if (phase === 'lobby') return 'lobby';
-  if (phase === 'final') return 'final';
+function screenKindFor(s) {
+  if (s.phase === 'lobby') return 'lobby';
+  if (s.phase.startsWith('m_') || (s.phase === 'final' && s.mode === 'mafia')) return 'mafia';
+  if (s.phase === 'final') return 'final';
   return 'game';
 }
 
 function render() {
   const s = room.state;
   if (!s) return;
-  const kind = screenKindFor(s.phase);
+  const kind = screenKindFor(s);
   if (kind !== room.screenKind || (kind === 'game' && room.screen.roundNo !== s.roundNo)) {
     const ctx = { room, actions, serverNow, voice };
-    mount(kind === 'lobby' ? new LobbyScreen(ctx) : kind === 'final' ? new FinalScreen(ctx) : new GameScreen(ctx), kind);
+    const Screen = { lobby: LobbyScreen, final: FinalScreen, mafia: MafiaScreen, game: GameScreen }[kind];
+    mount(new Screen(ctx), kind);
   }
-  closingGuard(kind === 'game');
+  closingGuard(kind === 'game' || (kind === 'mafia' && s.phase !== 'final'));
   room.screen.update(s);
 }
 
@@ -227,7 +230,7 @@ function enterRoom(res) {
 }
 
 async function leaveRoom() {
-  const inGame = room.state && screenKindFor(room.state.phase) === 'game';
+  const inGame = room.state && (room.state.phase.startsWith('m_') || screenKindFor(room.state) === 'game');
   if (inGame && !(await confirm('Выйти из игры? Партия продолжится без вас.'))) return;
   const code = room.code;
   showHome();
@@ -236,11 +239,11 @@ async function leaveRoom() {
 
 // ─── Действия ──────────────────────────────────────────────────────────────
 
-async function create() {
+async function create(mode) {
   haptic.tap();
   showLoading();
   try {
-    enterRoom(await call('createLobby'));
+    enterRoom(await call('createLobby', { mode }));
   } catch (e) {
     toast(e.message, 'err');
     showHome();
@@ -278,7 +281,10 @@ async function act(name, input = {}) {
 const actions = {
   leave: leaveRoom,
   start: () => act('startGame'),
-  settings: (rounds, drawTime) => act('settings', { rounds, drawTime }),
+  settings: (changes) => act('settings', changes),
+  mafia: (kind, target) => act('mafiaAct', { kind, target }),
+  chat: (text) => act('chat', { text }),
+  toLobby: () => act('toLobby'),
   pick: (index) => act('pickWord', { index }),
   guess: (text) => act('guess', { text }),
   flush: kick,

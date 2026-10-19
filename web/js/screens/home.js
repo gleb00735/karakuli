@@ -1,6 +1,7 @@
 // Главный экран: создать комнату, отсканировать QR или ввести код.
 
 import { h, svg, icon, avatar, sheet, toast } from '../ui.js';
+import { GAMES } from './lobby.js';
 import { me, canScan, scanQr, parseCode, haptic } from '../tg.js';
 
 const HERO = `
@@ -24,28 +25,47 @@ const UNDERLINE = `<svg class="underline" viewBox="0 0 210 22"><path d="M6 14c30
 export class HomeScreen {
   constructor({ create, join }) {
     this.join = join;
+    this.create = create;
     const word = h('span.logo-word', null, [...'Каракули'].map((ch) => h('span.l', null, ch)));
     this.el = h('div.screen', null,
       h('div.home-top', null,
         h('div.me-chip', null, avatar({ id: me.id, name: me.first_name, photo: me.photo_url }, { size: 32 }), h('span', null, me.first_name)),
       ),
       h('div.logo', null, word, svg(UNDERLINE)),
-      h('div.tagline.center', null, 'Рисуй и угадывай с друзьями'),
+      h('div.tagline.center', null, 'Игры с друзьями прямо в Telegram'),
       h('div.hero', null, svg(HERO), h('div.bubble', null, 'Это домик?'), h('div.bubble.b2', null, 'В точку! +150')),
       h('div.steps', null,
         h('div.step', null, h('b', null, '1'), 'Создай комнату'),
         h('div.step', null, h('b', null, '2'), 'Друзья сканируют QR'),
-        h('div.step', null, h('b', null, '3'), 'Рисуй и угадывай'),
+        h('div.step', null, h('b', null, '3'), 'Каракули или мафия'),
       ),
       h('div.spacer'),
       h('div.home-actions', null,
-        h('button.btn', { onclick: create }, icon('plus'), 'Создать комнату'),
+        h('button.btn', { onclick: () => this.pickGame() }, icon('plus'), 'Создать комнату'),
         h('div.row', null,
           h('button.btn.violet', { onclick: () => this.scan() }, icon('scan'), 'Сканировать'),
           h('button.btn.ghost', { onclick: () => this.askCode() }, icon('keypad'), 'Ввести код'),
         ),
       ),
     );
+  }
+
+  pickGame() {
+    haptic.tap();
+    const card = (mode) => {
+      const g = GAMES[mode];
+      return h('button.game-card.' + mode, { onclick: () => { s.close(); this.create(mode); } },
+        h('div.gc-emoji', null, g.emoji),
+        h('div.gc-text', null, h('div.gc-title', null, g.title), h('div.gc-sub', null, g.sub)),
+        h('div.gc-players', null, g.players),
+      );
+    };
+    const s = sheet(h('div.col', null,
+      h('div.h1.center', null, 'Во что играем?'),
+      h('div.muted.center', null, 'Игру можно поменять в комнате'),
+      card('draw'),
+      card('mafia'),
+    ));
   }
 
   scan() {

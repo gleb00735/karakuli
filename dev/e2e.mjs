@@ -32,6 +32,7 @@ await shot(A, '01-home');
 await shot(B, '01-home-dark');
 
 await A.click('text=Создать комнату');
+await A.click('.game-card.draw');
 await A.waitForSelector('.qr-card').catch(async (e) => { await shot(A, 'fail-A'); console.log(errors.join('\n')); console.log(await A.evaluate(() => document.getElementById('app').innerHTML.slice(0, 300))); throw e; });
 const code = (await A.locator('.room-code').innerText()).replace(/\D/g, '');
 console.log('room', code);
@@ -49,7 +50,7 @@ await wait(2000);
 await shot(A, '04-lobby-host-3');
 await shot(B, '04-lobby-guest-dark');
 
-await A.click('.seg >> nth=0 >> text=1');
+await A.click('.seg >> nth=1 >> text=1');
 await wait(500);
 await A.click('text=Начать игру');
 await wait(1500);

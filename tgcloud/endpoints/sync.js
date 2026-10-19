@@ -7,5 +7,5 @@ export default async function (input, ctx) {
   const { lobby, players } = await enter(user, input.code);
   if (input.ops) await pushOps(lobby, user, input.ops);
   if (input.signals) await pushSignals(lobby, players, user, input.signals);
-  return { state: view(lobby, players, user.id), ...(await feed(lobby, user.id, input)) };
+  return { state: await view(lobby, players, user.id), ...(await feed(lobby, user.id, input)) };
 }

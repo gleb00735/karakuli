@@ -236,6 +236,9 @@ export class GameScreen {
   // ─── Лента ───────────────────────────────────────────────────────────────
 
   addMessage(m, live) {
+    // Одно и то же сообщение может прийти и при создании экрана, и в absorb().
+    if (m.id <= (this.seenMsg || 0)) return;
+    this.seenMsg = m.id;
     const line = formatMessage(m, this.s);
     if (!line) return;
     if (this.feedEl) {

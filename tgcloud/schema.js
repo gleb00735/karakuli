@@ -25,6 +25,10 @@ export const lobbies = table('lobbies', {
   phaseStart:  integer('phase_start'),
   deadline:    integer('deadline'),
   lastResult:  text('last_result'),
+  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия».
+  mode:        text('mode').notNull().default('draw'),
+  // Состояние партии в мафию (роли, живые, проверки комиссара, события) — JSON.
+  mstate:      text('mstate'),
   created:     integer('created_at').notNull(),
   updated:     integer('updated_at').notNull(),
 }, (t) => ({
@@ -92,4 +96,18 @@ export const signals = table('signals', {
   created:  integer('created_at').notNull(),
 }, (t) => ({
   toIdx: index('idx_signals_to').on(t.lobbyId, t.toUser, t.id),
+}));
+
+// Ходы в мафии: ночные действия, голоса, «готов» и «ознакомился с ролью».
+// key — шаг партии (например, n2 — вторая ночь, v2 — второе голосование);
+// у одного игрока на шаге один ход, повторный ход заменяет предыдущий.
+export const mafiaMoves = table('mafia_moves', {
+  id:      integer('id').primaryKey({ autoIncrement: true }),
+  lobbyId: integer('lobby_id').notNull(),
+  key:     text('key').notNull(),
+  userId:  integer('user_id').notNull(),
+  target:  integer('target').notNull().default(0),
+  created: integer('created_at').notNull(),
+}, (t) => ({
+  moveIdx: uniqueIndex('uidx_mafia_moves').on(t.lobbyId, t.key, t.userId),
 }));

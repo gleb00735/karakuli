@@ -23,6 +23,7 @@ const A = await player(501, 'Аня');
 const B = await player(502, 'Борис');
 const C = await player(503, 'Вика');
 await A.page.click('text=Создать комнату');
+await A.page.click('.game-card.draw');
 await A.page.waitForSelector('.qr-card');
 const code = (await A.page.locator('.room-code').innerText()).replace(/\D/g, '');
 for (const p of [B, C]) { await p.page.goto(`${BASE}/?uid=${p === B ? 502 : 503}&join=${code}`); await p.page.waitForSelector('.qr-card'); }

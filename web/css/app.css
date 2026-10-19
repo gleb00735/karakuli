@@ -679,3 +679,123 @@ img { display: block; }
 .hud-btns { display: flex; gap: 6px; flex: none; }
 .hud-btns .icon-btn { width: 40px; height: 40px; border-radius: 13px; }
 .hud-btns .icon-btn svg { width: 20px; height: 20px; }
+
+/* ─── Выбор игры ──────────────────────────────────────────── */
+.game-card {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 16px; border-radius: 22px; text-align: left;
+  background: var(--card); box-shadow: inset 0 0 0 2px var(--line), 0 4px 0 var(--line-2);
+  transition: transform .08s;
+}
+.game-card:active { transform: translateY(3px); box-shadow: inset 0 0 0 2px var(--line), 0 1px 0 var(--line-2); }
+.game-card.mafia { background: linear-gradient(135deg, #2a2346, #17142a); color: #f4f1ff; box-shadow: 0 4px 0 #0c0a18; }
+.gc-emoji { font-size: 36px; width: 56px; height: 56px; display: grid; place-items: center; border-radius: 16px; background: var(--bg-2); flex: none; }
+.game-card.mafia .gc-emoji { background: rgba(255, 255, 255, .08); }
+.gc-text { flex: 1; min-width: 0; }
+.gc-title { font: 900 20px/1.1 var(--font); }
+.gc-sub { font-size: 13.5px; font-weight: 700; opacity: .75; margin-top: 2px; }
+.gc-players { flex: none; font-size: 12.5px; font-weight: 900; padding: 6px 10px; border-radius: 99px; background: var(--bg-2); color: var(--ink-2); }
+.game-card.mafia .gc-players { background: rgba(255, 255, 255, .1); color: #e2dcff; }
+.mafia-info { font-weight: 700; display: flex; flex-direction: column; gap: 4px; }
+
+/* ─── Мафия ───────────────────────────────────────────────── */
+.mafia { transition: background-color .6s; }
+.mafia.night {
+  --bg: #0e0d1d; --bg-2: #1a1830; --card: #1d1b33; --ink: #ecebff; --ink-2: #aaa6d0; --ink-3: #6f6a96;
+  --line: #2b2848; --line-2: #36325a;
+  background-color: var(--bg); color: var(--ink);
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, #fff8 50%, transparent 51%),
+    radial-gradient(1px 1px at 72% 9%, #fff9 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 88% 32%, #fff6 50%, transparent 51%),
+    radial-gradient(1px 1px at 33% 41%, #fff5 50%, transparent 51%),
+    radial-gradient(1px 1px at 58% 24%, #fff7 50%, transparent 51%),
+    radial-gradient(circle at 85% -10%, #3b3480 0, transparent 45%);
+  background-size: auto;
+}
+.m-rolebar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.m-role {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px 7px 8px; border-radius: 99px;
+  background: var(--card); box-shadow: var(--shadow);
+  font-weight: 700; font-size: 14px; color: var(--ink);
+}
+.m-role .e { font-size: 18px; }
+.m-role.mafia { box-shadow: inset 0 0 0 2px var(--coral), var(--shadow); }
+.m-role.town { box-shadow: inset 0 0 0 2px var(--mint), var(--shadow); }
+.m-count { font-size: 13px; font-weight: 800; color: var(--ink-3); }
+.m-hint {
+  padding: 10px 14px; border-radius: 16px;
+  background: color-mix(in srgb, var(--violet) 14%, var(--card));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--violet) 35%, transparent);
+  font-weight: 800; font-size: 14.5px; text-align: center;
+}
+.m-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin: 0 -4px; padding: 2px 4px; }
+.m-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mp {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px; border-radius: 18px; text-align: left; min-width: 0;
+  background: var(--card); box-shadow: var(--shadow); color: var(--ink);
+  transition: transform .1s, box-shadow .15s, opacity .2s;
+}
+.mp:disabled { cursor: default; }
+.mp .ava { --s: 40px; }
+.mp-body { flex: 1; min-width: 0; }
+.mp-name { font-weight: 800; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; font-size: 12px; min-height: 18px; }
+.mp.can { box-shadow: inset 0 0 0 2px var(--line-2), var(--shadow); }
+.mp.can:active { transform: scale(.97); }
+.mp.chosen { box-shadow: inset 0 0 0 3px var(--violet), 0 0 0 4px color-mix(in srgb, var(--violet) 25%, transparent); }
+.night .mp.chosen { box-shadow: inset 0 0 0 3px var(--coral), 0 0 0 4px color-mix(in srgb, var(--coral) 25%, transparent); }
+.mp.ready { box-shadow: inset 0 0 0 2px var(--mint), var(--shadow); }
+.mp.dead { opacity: .5; }
+.mp.dead .mp-name { text-decoration: line-through; }
+.mp-votes {
+  position: absolute; right: 8px; top: 8px;
+  min-width: 26px; height: 26px; padding: 0 7px; border-radius: 13px;
+  display: grid; place-items: center;
+  background: var(--coral); color: #fff; font-weight: 900; font-size: 14px;
+  box-shadow: 0 2px 0 var(--coral-d);
+  animation: pop-in .25s;
+}
+.mp-picks { position: absolute; right: 6px; top: -6px; display: flex; }
+.mp-picks .ava { box-shadow: 0 0 0 2px var(--coral); margin-left: -4px; }
+.m-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 900; white-space: nowrap;
+  background: var(--bg-2); color: var(--ink-2);
+}
+.m-tag.mafia { background: color-mix(in srgb, var(--coral) 20%, var(--card)); color: var(--coral); }
+.m-tag.town { background: color-mix(in srgb, var(--mint) 18%, var(--card)); color: var(--mint-d); }
+:root[data-theme="dark"] .m-tag.town, .night .m-tag.town { color: var(--mint); }
+.m-tag.big { font-size: 15px; padding: 6px 14px; }
+.m-feed { height: auto; min-height: 90px; flex: 1; mask-image: none; -webkit-mask-image: none; }
+.feed .m.narr { font-family: var(--hand); font-size: 20px; font-weight: 700; color: var(--violet); line-height: 1.15; padding: 4px 6px; }
+.night .feed .m.narr { color: #b9a8ff; }
+.feed .m.mafia-chat { color: var(--coral); }
+.m-bottom { display: flex; flex-direction: column; gap: 8px; }
+.m-bottom .row .btn { flex: 1; }
+.m-overlay { overflow-y: auto; justify-content: flex-start; padding-top: calc(var(--safe-top) + 60px); }
+.mafia.night .overlay { background: color-mix(in srgb, #0e0d1d 90%, transparent); }
+
+.role-card { width: min(78vw, 300px); aspect-ratio: .72; perspective: 900px; cursor: pointer; }
+.rc-inner { position: relative; width: 100%; height: 100%; transition: transform .7s cubic-bezier(.3, 1.3, .5, 1); transform-style: preserve-3d; }
+.role-card.open .rc-inner { transform: rotateY(180deg); }
+.rc-back, .rc-front {
+  position: absolute; inset: 0; border-radius: 26px; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 22px; text-align: center;
+  box-shadow: var(--shadow-lg);
+}
+.rc-back { background: repeating-linear-gradient(45deg, #2a2346, #2a2346 12px, #231d3c 12px, #231d3c 24px); color: #d9d3ff; box-shadow: inset 0 0 0 4px #4b3f86, var(--shadow-lg); }
+.rc-q { font: 700 96px/1 var(--hand); }
+.rc-front { transform: rotateY(180deg); background: var(--card); color: var(--ink); }
+.role-card.mafia .rc-front { background: linear-gradient(160deg, #3a1d2b, #1c1222); color: #fff; box-shadow: inset 0 0 0 3px var(--coral), var(--shadow-lg); }
+.role-card.town .rc-front { box-shadow: inset 0 0 0 3px var(--mint), var(--shadow-lg); }
+.rc-emoji { font-size: 64px; }
+.rc-name { font: 700 42px/1 var(--hand); }
+.rc-text { font-size: 14.5px; font-weight: 700; opacity: .85; }
+.rc-mates { font-size: 14px; font-weight: 900; color: var(--coral); }
+.final-ov .gain .m-tag { flex: none; }
+.mp-tags .m-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }

@@ -26,6 +26,7 @@ const A = await player(withMic, 601, 'Аня', true);
 const B = await player(withMic, 602, 'Борис', true);
 const C = await player(noMic, 603, 'Вика', false);
 await A.click('text=Создать комнату');
+await A.click('.game-card.draw');
 await A.waitForSelector('.qr-card');
 const code = (await A.locator('.room-code').innerText()).replace(/\D/g, '');
 for (const [p, uid] of [[B, 602], [C, 603]]) { await p.goto(`${BASE}/?uid=${uid}&join=${code}`); await p.waitForSelector('.qr-card'); }

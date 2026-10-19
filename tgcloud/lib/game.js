@@ -6,56 +6,26 @@
 // выполняется условным UPDATE по полю version — если два запроса пришли
 // одновременно, переход сделает только один из них.
 
-import { EndpointError } from 'sdk';
 import { one, many, exec } from './sql.js';
 import { TIERS, TIER_MULT } from './words.js';
+import {
+  STALE_MS, LOBBY_DROP_MS, now, begin, fail, caller, loadLobby, loadLobbyById, loadPlayers,
+  isActive, isGone, parse, addMessage, transition, dropPlayers,
+} from './core.js';
+import { MAFIA_MIN, MAFIA_MAX, startMafia, mafiaAdvance, mafiaAct, mafiaChat, mafiaView } from './mafia.js';
+
+export { begin, caller, fail, loadLobby };
 
 export const MAX_PLAYERS = 3;
 export const MIN_PLAYERS = 2;
+const MODES = ['draw', 'mafia'];
+const maxPlayers = (lobby) => (lobby.mode === 'mafia' ? MAFIA_MAX : MAX_PLAYERS);
+const minPlayers = (lobby) => (lobby.mode === 'mafia' ? MAFIA_MIN : MIN_PLAYERS);
 export const PICK_MS = 15_000;
 export const REVEAL_MS = 6_000;
-// Клиент опрашивает сервер каждые 0,4–1,5 с (в свёрнутом виде — раз в 4 с).
-// Игрок, не выходивший на связь дольше STALE_MS, считается отключившимся,
-// а вне партии через LOBBY_DROP_MS убирается из комнаты.
-export const STALE_MS = 10_000;
-export const LOBBY_DROP_MS = 30_000;
-// Посреди партии игрока считаем ушедшим (пропуск хода, прерывание игры)
-// только после более долгой тишины: короткие обрывы связи не должны ломать игру.
-export const GAME_GONE_MS = 25_000;
 const LOBBY_TTL_MS = 6 * 3600_000;
 const ROUND_OPTIONS = [1, 2, 3];
 const DRAW_TIME_OPTIONS = [60, 80, 100];
-
-// Запросы обрабатывают разные серверы платформы, и их часы расходятся на
-// секунды. Поэтому время берётся из базы данных — это единые часы для всех:
-// в начале каждого запроса begin() вычисляет поправку к локальным часам.
-let clockOffset = 0;
-const now = () => Date.now() + clockOffset;
-
-async function syncClock() {
-  const r = await one("SELECT CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) AS t");
-  if (r && r.t) clockOffset = r.t - Date.now();
-}
-
-// Начало обработки любого запроса Mini App: сверка часов и проверка пользователя.
-export async function begin(ctx) {
-  const user = caller(ctx);
-  await syncClock();
-  return user;
-}
-
-export const fail = (code, description) => {
-  throw new EndpointError(description, { code });
-};
-
-// ─── Пользователь ──────────────────────────────────────────────────────────
-
-export function caller(ctx) {
-  const u = ctx && ctx.initData && ctx.initData.user;
-  if (!u || !u.id) fail('NO_USER', 'Откройте игру из Telegram');
-  const name = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.username || 'Игрок';
-  return { id: u.id, name: name.slice(0, 24), photo: u.photo_url || null };
-}
 
 // ─── Слова ─────────────────────────────────────────────────────────────────
 
@@ -126,40 +96,6 @@ function pickChoices(used) {
 }
 
 // ─── Загрузка ──────────────────────────────────────────────────────────────
-
-export const loadLobby = (code) => one('SELECT * FROM lobbies WHERE code = :code', { code: String(code || '') });
-const loadLobbyById = (id) => one('SELECT * FROM lobbies WHERE id = :id', { id });
-const loadPlayers = (lobbyId) => many('SELECT * FROM players WHERE lobby_id = :lobbyId ORDER BY seat', { lobbyId });
-
-const isActive = (p, t) => p.last_seen >= t - STALE_MS;
-const isGone = (p, t) => p.last_seen < t - GAME_GONE_MS;
-const parse = (s, fallback) => { try { return s ? JSON.parse(s) : fallback; } catch { return fallback; } };
-
-async function addMessage(lobby, kind, fields = {}) {
-  await exec(
-    `INSERT INTO messages (lobby_id, round_no, kind, user_id, name, body, to_user, created_at)
-     VALUES (:lobbyId, :roundNo, :kind, :userId, :name, :body, :toUser, :t)`,
-    {
-      lobbyId: lobby.id, roundNo: lobby.round_no, kind,
-      userId: fields.userId ?? null, name: fields.name ?? null, body: fields.body ?? null,
-      toUser: fields.toUser ?? null, t: now(),
-    },
-  );
-}
-
-// Применяет изменения к комнате, только если её никто не изменил раньше.
-// Возвращает новую версию строки или null, если переход уже выполнил другой запрос.
-async function transition(lobby, changes) {
-  const cols = Object.keys(changes);
-  const set = cols.map((c) => `${c} = :${c}`).join(', ');
-  const t = now();
-  const res = await exec(
-    `UPDATE lobbies SET ${set}, version = version + 1, updated_at = :t WHERE id = :id AND version = :v`,
-    { ...changes, t, id: lobby.id, v: lobby.version },
-  );
-  if (!res.rowsAffected) return null;
-  return { ...lobby, ...changes, version: lobby.version + 1, updated_at: t };
-}
 
 // ─── Переходы фаз ──────────────────────────────────────────────────────────
 
@@ -244,13 +180,6 @@ async function trackPresence(lobby, players, t) {
   }
 }
 
-async function dropPlayers(lobby, gone) {
-  for (const p of gone) {
-    const res = await exec('DELETE FROM players WHERE id = :pid', { pid: p.id });
-    if (res.rowsAffected) await addMessage(lobby, 'left', { userId: p.user_id, name: p.name });
-  }
-}
-
 async function finish(lobby) {
   const t = now();
   return transition(lobby, { phase: 'final', drawer_id: null, word: null, choices: null, phase_start: t, deadline: null });
@@ -284,7 +213,10 @@ export async function advance(lobby) {
       return { lobby, players };
     }
 
-    if (inGame && players.filter((p) => !isGone(p, t)).length < MIN_PLAYERS) {
+    if (lobby.phase.startsWith('m_')) {
+      next = await mafiaAdvance(lobby, players, t);
+      if (next === undefined) return { lobby, players };
+    } else if (inGame && players.filter((p) => !isGone(p, t)).length < MIN_PLAYERS) {
       next = await abort(lobby, players, t);
     } else if (lobby.phase === 'pick') {
       const drawer = players.find((p) => p.user_id === lobby.drawer_id);
@@ -354,15 +286,15 @@ async function newCode() {
   fail('NO_CODE', 'Не удалось создать комнату, попробуйте ещё раз');
 }
 
-export async function createLobby(user) {
+export async function createLobby(user, mode) {
   await cleanupOld();
   await leaveAll(user.id);
   const t = now();
   const code = await newCode();
   const res = await exec(
-    `INSERT INTO lobbies (code, host_id, phase, version, rounds, draw_time, created_at, updated_at)
-     VALUES (:code, :host, 'lobby', 0, 2, 80, :t, :t)`,
-    { code, host: user.id, t },
+    `INSERT INTO lobbies (code, host_id, phase, version, rounds, draw_time, mode, created_at, updated_at)
+     VALUES (:code, :host, 'lobby', 0, 2, 80, :mode, :t, :t)`,
+    { code, host: user.id, mode: MODES.includes(mode) ? mode : 'draw', t },
   );
   await exec(
     `INSERT INTO players (lobby_id, user_id, name, photo, seat, score, gained, last_seen, joined_at)
@@ -383,7 +315,7 @@ export async function joinLobby(user, code) {
   }
   const { lobby: cur, players } = await advance(lobby);
   if (cur.phase !== 'lobby' && cur.phase !== 'final') fail('IN_PROGRESS', 'Игра уже идёт. Дождитесь конца партии');
-  if (players.length >= MAX_PLAYERS) fail('FULL', 'В комнате уже 3 игрока');
+  if (players.length >= maxPlayers(cur)) fail('FULL', `В комнате уже ${maxPlayers(cur)} игроков — мест нет`);
   await leaveAll(user.id, lobby.id);
   const seat = players.reduce((m, p) => Math.max(m, p.seat), -1) + 1;
   await exec(
@@ -405,13 +337,19 @@ export async function enter(user, code) {
   return advance(lobby);
 }
 
-export async function updateSettings(user, code, { rounds, drawTime }) {
+export async function updateSettings(user, code, { rounds, drawTime, mode }) {
   const { lobby } = await enter(user, code);
   if (lobby.host_id !== user.id) fail('NOT_HOST', 'Настройки меняет хозяин комнаты');
   if (lobby.phase !== 'lobby' && lobby.phase !== 'final') fail('IN_PROGRESS', 'Игра уже идёт');
   const changes = {};
   if (ROUND_OPTIONS.includes(rounds)) changes.rounds = rounds;
   if (DRAW_TIME_OPTIONS.includes(drawTime)) changes.draw_time = drawTime;
+  if (MODES.includes(mode) && mode !== lobby.mode) {
+    const n = (await loadPlayers(lobby.id)).length;
+    if (mode === 'draw' && n > MAX_PLAYERS) fail('TOO_MANY', `В «Каракули» играют до ${MAX_PLAYERS} человек, а в комнате ${n}`);
+    changes.mode = mode;
+    changes.last_result = null;
+  }
   if (Object.keys(changes).length) await transition(lobby, changes);
 }
 
@@ -421,9 +359,13 @@ export async function startGame(user, code) {
   if (lobby.phase !== 'lobby' && lobby.phase !== 'final') fail('IN_PROGRESS', 'Игра уже идёт');
   const t = now();
   const active = players.filter((p) => isActive(p, t));
-  if (active.length < MIN_PLAYERS) fail('NOT_ENOUGH', 'Нужно хотя бы 2 игрока в сети');
+  if (active.length < minPlayers(lobby)) fail('NOT_ENOUGH', `Нужно хотя бы ${minPlayers(lobby)} игрока в сети`);
   // Кто не в сети в момент старта — выбывает из комнаты.
   await dropPlayers(lobby, players.filter((p) => !isActive(p, t)));
+  if (lobby.mode === 'mafia') {
+    if (!(await startMafia(lobby, active.map((p) => p.user_id)))) fail('CONFLICT', 'Попробуйте ещё раз');
+    return;
+  }
   const order = active.map((p) => p.user_id);
   const started = await transition(lobby, {
     phase: 'lobby', game: lobby.game + 1, turn: 0,
@@ -475,6 +417,26 @@ export async function guess(user, code, text) {
   if (word.length >= 3 && g.includes(word)) return { result: 'wrong' };
   await addMessage(lobby, 'guess', { userId: user.id, name: me.name, body: raw });
   return { result: 'wrong' };
+}
+
+// ─── Мафия ─────────────────────────────────────────────────────────────────
+
+// Хозяин возвращает всех из итогов в лобби (например, чтобы сменить игру).
+export async function backToLobby(user, code) {
+  const { lobby } = await enter(user, code);
+  if (lobby.host_id !== user.id) fail('NOT_HOST', 'Это может сделать хозяин комнаты');
+  if (lobby.phase !== 'final') return;
+  await transition(lobby, { phase: 'lobby', last_result: null, deadline: null });
+}
+
+export async function mafiaAction(user, code, kind, target) {
+  const { lobby } = await enter(user, code);
+  await mafiaAct(lobby, user, kind, target);
+}
+
+export async function chat(user, code, text) {
+  const { lobby } = await enter(user, code);
+  await mafiaChat(lobby, user, user.name, text);
 }
 
 // ─── Голосовой чат ─────────────────────────────────────────────────────────
@@ -529,11 +491,14 @@ export async function pushOps(lobby, user, ops) {
 
 // ─── Состояние для клиента ─────────────────────────────────────────────────
 
-export function view(lobby, players, userId) {
+export async function view(lobby, players, userId) {
   const t = now();
   const isDrawer = lobby.drawer_id === userId;
   const state = {
     code: lobby.code,
+    mode: lobby.mode,
+    minPlayers: minPlayers(lobby),
+    maxPlayers: maxPlayers(lobby),
     phase: lobby.phase,
     version: lobby.version,
     hostId: lobby.host_id,
@@ -566,6 +531,7 @@ export function view(lobby, players, userId) {
     state.mask = maskWord(lobby, t);
   }
   if (lobby.phase === 'reveal') state.result = parse(lobby.last_result, null);
+  if (lobby.mode === 'mafia' && (lobby.phase.startsWith('m_') || lobby.phase === 'final')) state.mafia = await mafiaView(lobby, userId);
   if (lobby.phase === 'lobby') {
     const last = parse(lobby.last_result, null);
     if (last && last.aborted) state.notice = { aborted: true, names: last.names || [], ids: last.ids || [] };
@@ -609,5 +575,5 @@ export async function snapshot(user, code, input = {}) {
   if (!lobby) fail('NOT_FOUND', 'Комната закрыта');
   const { lobby: cur, players } = await advance(lobby);
   if (!players.some((p) => p.user_id === user.id)) fail('NOT_IN_LOBBY', 'Вы не в этой комнате');
-  return { state: view(cur, players, user.id), ...(await feed(cur, user.id, input)) };
+  return { state: await view(cur, players, user.id), ...(await feed(cur, user.id, input)) };
 }

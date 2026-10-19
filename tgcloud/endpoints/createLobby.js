@@ -3,6 +3,6 @@ import { begin, createLobby, snapshot } from '../lib/game.js';
 
 export default async function (input, ctx) {
   const user = await begin(ctx);
-  const code = await createLobby(user);
+  const code = await createLobby(user, input.mode);
   return snapshot(user, code);
 }
