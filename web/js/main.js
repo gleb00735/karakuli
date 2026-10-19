@@ -97,6 +97,7 @@ function absorb(res, sentAt) {
     fresh.push(...b.ops);
   }
   const newMsgs = [];
+  const initial = room.msgSince === 0;
   for (const m of res.messages || []) {
     if (m.id <= room.msgSince) continue;
     room.msgSince = m.id;
@@ -107,6 +108,18 @@ function absorb(res, sentAt) {
 
   render();
   if (room.screen && room.screen.absorb) room.screen.absorb(fresh, newMsgs);
+  if (!initial) for (const m of newMsgs) presenceToast(m);
+}
+
+// Уведомления о том, кто зашёл, отключился, вернулся или вышел.
+function presenceToast(m) {
+  if (m.userId === room.state.me && m.kind !== 'abort') return;
+  const n = m.name;
+  if (m.kind === 'join') toast(`${n} в комнате`, 'ok', 2000);
+  else if (m.kind === 'away') toast(`${n} не в сети`, 'warn');
+  else if (m.kind === 'back') toast(`${n} снова в сети`, 'ok', 2000);
+  else if (m.kind === 'left') toast(`${n} покидает комнату`, 'warn');
+  else if (m.kind === 'abort') haptic.err();
 }
 
 function interval() {
@@ -172,7 +185,7 @@ async function handleError(e) {
     if (was === 'lobby' || was === 'final') {
       try { await call('joinLobby', { code: room.code }); return false; } catch {}
     }
-    toast('Вы больше не в этой комнате', 'warn');
+    toast('Вы долго были не в сети и выбыли из комнаты', 'warn', 3500);
     showHome();
     return true;
   }
@@ -273,5 +286,12 @@ async function boot() {
 }
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && room.code) kick(); });
+
+// Закрытие Mini App вне партии — сразу выходим из комнаты, чтобы остальные
+// не ждали. Запрос может не успеть уйти; тогда сработает таймаут присутствия.
+window.addEventListener('pagehide', () => {
+  const phase = room.state && room.state.phase;
+  if (room.code && (phase === 'lobby' || phase === 'final')) call('leaveLobby', { code: room.code }).catch(() => {});
+});
 
 boot();

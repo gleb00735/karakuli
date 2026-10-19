@@ -7,7 +7,7 @@ let shift = 0;
 Date.now = () => realNow() + shift;
 const skip = (ms) => { shift += ms; };
 let everyone = async () => {};
-const wait = async (ms) => { while (ms > 0) { const d = Math.min(ms, 10_000); skip(d); ms -= d; await everyone(); } };
+const wait = async (ms) => { while (ms > 0) { const d = Math.min(ms, 5_000); skip(d); ms -= d; await everyone(); } };
 
 applySchema(await import('../tgcloud/schema.js'));
 const ep = async (name, input, uid) => {
@@ -80,3 +80,37 @@ s = await ep('sync', { code }, B);
 assert.equal(s.state.hostId, B);
 assert.equal((await ep('resume', {}, C)).code, code);
 console.log('ALL OK');
+
+// ─── Присутствие ───────────────────────────────────────────────────────────
+{
+  const X = 11, Y = 12, Z = 13;
+  const r = await ep('createLobby', {}, X);
+  const code = r.state.code;
+  await ep('joinLobby', { code }, Y);
+  await ep('joinLobby', { code }, Z);
+  // Z закрыл приложение: через 10 с — «не в сети», через 30 с — выбыл.
+  await wait0(12_000, [X, Y], code);
+  let s = await ep('sync', { code }, X);
+  assert.equal(s.state.players.find((p) => p.id === Z).active, false);
+  assert.ok(s.messages.some((m) => m.kind === 'away' && m.userId === Z));
+  await wait0(20_000, [X, Y], code);
+  s = await ep('sync', { code }, X);
+  assert.equal(s.state.players.length, 2);
+  assert.ok(s.messages.some((m) => m.kind === 'left' && m.userId === Z));
+  // Партия на двоих: Y пропадает посреди хода — игра прерывается.
+  await ep('startGame', { code }, X);
+  await wait0(12_000, [X], code);
+  s = await ep('sync', { code }, X);
+  assert.equal(s.state.phase, 'lobby');
+  assert.deepEqual(s.state.notice, { aborted: true, names: ['U12'] });
+  assert.ok(s.messages.some((m) => m.kind === 'abort'));
+  // Y вернулся — снова в сети, сообщение «вернулся».
+  s = await ep('sync', { code }, Y);
+  assert.equal(s.state.players.find((p) => p.id === Y).active, true);
+  assert.ok(s.messages.some((m) => m.kind === 'back' && m.userId === Y));
+  console.log('PRESENCE OK', s.messages.map((m) => m.kind).join(' '));
+}
+
+async function wait0(ms, who, code) {
+  while (ms > 0) { const d = Math.min(ms, 3_000); skip(d); ms -= d; for (const u of who) await ep('sync', { code }, u); }
+}

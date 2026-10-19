@@ -334,6 +334,9 @@ function formatMessage(m, s) {
     case 'turn': return h('div.m.sys', null, m.userId === s.me ? 'Вы рисуете' : `Рисует ${m.name}`);
     case 'word': return h('div.m.sys', null, `Слово было: ${m.body}`);
     case 'join': return h('div.m.sys', null, `${who(m.userId, m.name)} в комнате`);
+    case 'away': return h('div.m.sys', null, `${m.name} не в сети`);
+    case 'back': return h('div.m.sys', null, `${m.name} снова в сети`);
+    case 'left': return h('div.m.sys', null, `${m.name} покидает комнату`);
     default: return null;
   }
 }

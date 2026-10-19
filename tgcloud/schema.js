@@ -42,6 +42,8 @@ export const players = table('players', {
   score:     integer('score').notNull().default(0),
   gained:    integer('gained').notNull().default(0),
   guessedAt: integer('guessed_at'),
+  // 1 — игрок перестал выходить на связь (закрыл приложение или пропала сеть).
+  away:      integer('away').notNull().default(0),
   lastSeen:  integer('last_seen').notNull(),
   joined:    integer('joined_at').notNull(),
 }, (t) => ({

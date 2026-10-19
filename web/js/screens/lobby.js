@@ -2,7 +2,7 @@
 
 import { h, svg, icon, icons, avatar, toast } from '../ui.js';
 import { qrSvg } from '../qr.js';
-import { roomLink, shareRoom, copy, haptic } from '../tg.js';
+import { roomLink, shareRoom, copy, haptic, confirm } from '../tg.js';
 
 const MAX = 3;
 
@@ -29,9 +29,13 @@ async function copyCode(code) {
 export function seatList(state) {
   const seats = state.players.map((p) => {
     const host = p.id === state.hostId;
-    return h('div.seat', null,
-      avatar(p, { off: !p.active }),
-      h('div.nm', null, p.name),
+    const online = p.active || p.id === state.me;
+    return h('div.seat' + (online ? '' : '.away'), null,
+      avatar(p, { off: !online }),
+      h('div.who', null,
+        h('div.nm', null, p.name),
+        h('div.st' + (online ? '.on' : '.off'), null, online ? 'в сети' : 'не в сети — ждём…'),
+      ),
       p.id === state.me && h('span.tag', null, 'вы'),
       host && h('span.tag.host', null, '👑 хозяин'),
     );
@@ -55,13 +59,32 @@ export class LobbyScreen {
 
   update(s) {
     const isHost = s.hostId === s.me;
-    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active]), s.hostId, s.rounds, s.drawTime]);
+    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active]), s.hostId, s.rounds, s.drawTime, s.notice, this.noticeHidden]);
     if (key === this.key) return;
     const prev = this.key ? JSON.parse(this.key)[0].length : s.players.length;
     if (s.players.length > prev) haptic.ok();
     this.key = key;
 
     const n = s.players.length;
+    const online = s.players.filter((p) => p.active || p.id === s.me);
+    const offline = s.players.filter((p) => !(p.active || p.id === s.me));
+    const notice = s.notice && !this.noticeHidden && h('div.notice', null,
+      h('div.notice-t', null, 'Игра прервана'),
+      h('div', null, s.notice.names.length
+        ? `${s.notice.names.length > 1 ? 'Игроки' : 'Игрок'} ${s.notice.names.join(', ')} ${s.notice.names.length > 1 ? 'вышли' : 'вышел'} из игры — продолжать не с кем. Соберите компанию и начните заново.`
+        : 'Не хватило игроков. Соберите компанию и начните заново.'),
+      h('button.notice-x', { 'aria-label': 'Закрыть', onclick: () => { this.noticeHidden = true; this.key = ''; this.update(this.room.state); } }, icon('close')),
+    );
+    const start = async (e) => {
+      const btn = e.currentTarget;
+      haptic.tap();
+      if (offline.length) {
+        const names = offline.map((p) => p.name).join(', ');
+        if (!(await confirm(`${names} сейчас не в сети. Начать без ${offline.length > 1 ? 'них' : 'этого игрока'}?`))) return;
+      }
+      btn.disabled = true;
+      this.actions.start();
+    };
     const seg = (opts, cur, fmt, onPick) => h('div.seg' + (isHost ? '' : '.ro'), null,
       opts.map((v) => h('button' + (v === cur ? '.on' : ''), { onclick: () => { if (v !== cur) { haptic.tick(); onPick(v); } } }, fmt(v))));
 
@@ -72,8 +95,9 @@ export class LobbyScreen {
         h('div.title', null, 'Комната'),
         h('div', { style: { width: '44px' } }),
       ),
+      notice || '',
       qrCard(s.code),
-      h('div.section-title', null, h('div.h2', null, 'Игроки'), h('div.faint.small', null, `${n} из ${MAX}`)),
+      h('div.section-title', null, h('div.h2', null, 'Игроки'), h('div.faint.small', null, `${online.length} в сети · ${n} из ${MAX}`)),
       seatList(s),
       h('div.section-title', null, h('div.h2', null, 'Партия'), !isHost && h('div.faint.small', null, 'настраивает хозяин')),
       h('div.card.settings', null,
@@ -85,8 +109,8 @@ export class LobbyScreen {
       h('div.spacer'),
       h('div.bottom-bar', null,
         isHost
-          ? h('button.btn.mint', { disabled: n < 2, onclick: (e) => { e.currentTarget.disabled = true; haptic.tap(); this.actions.start(); } },
-              n < 2 ? 'Нужен ещё 1 игрок' : [svg(icons.play), 'Начать игру'])
+          ? h('button.btn.mint', { disabled: online.length < 2, onclick: start },
+              online.length >= 2 ? [svg(icons.play), 'Начать игру'] : n < 2 ? 'Нужен ещё 1 игрок' : 'Ждём игроков в сети')
           : h('div.waiting-pill', null, `Ждём, пока ${host ? host.name : 'хозяин'} начнёт`, h('span.dots', null, h('span'), h('span'), h('span'))),
       ),
     );

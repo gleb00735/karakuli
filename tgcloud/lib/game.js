@@ -14,10 +14,11 @@ export const MAX_PLAYERS = 3;
 export const MIN_PLAYERS = 2;
 export const PICK_MS = 15_000;
 export const REVEAL_MS = 6_000;
-// Игрок, не выходивший на связь дольше этого, считается отключившимся.
-export const STALE_MS = 20_000;
-// В лобби отключившихся убираем из списка.
-export const LOBBY_DROP_MS = 45_000;
+// Клиент опрашивает сервер каждые 0,4–1,5 с (в свёрнутом виде — раз в 4 с).
+// Игрок, не выходивший на связь дольше STALE_MS, считается отключившимся,
+// а вне партии через LOBBY_DROP_MS убирается из комнаты.
+export const STALE_MS = 10_000;
+export const LOBBY_DROP_MS = 30_000;
 const LOBBY_TTL_MS = 6 * 3600_000;
 const ROUND_OPTIONS = [1, 2, 3];
 const DRAW_TIME_OPTIONS = [60, 80, 100];
@@ -197,6 +198,38 @@ async function endRound(lobby, players) {
   return next;
 }
 
+// Партия прервана: игроков осталось меньше двух. Комната возвращается в лобби
+// с пометкой, кто ушёл.
+async function abort(lobby, players, t) {
+  const names = players.filter((p) => !isActive(p, t)).map((p) => p.name);
+  const next = await transition(lobby, {
+    phase: 'lobby', drawer_id: null, word: null, choices: null, phase_start: t, deadline: null,
+    last_result: JSON.stringify({ aborted: true, names }),
+  });
+  if (next) await addMessage(next, 'abort', { body: names.join(', ') });
+  return next;
+}
+
+// Отмечает переходы «отключился» / «вернулся» — по одному сообщению на переход.
+async function trackPresence(lobby, players, t) {
+  for (const p of players) {
+    const active = isActive(p, t);
+    if (active === !p.away) continue;
+    const res = await exec('UPDATE players SET away = :a WHERE id = :pid AND away = :was', { a: active ? 0 : 1, pid: p.id, was: p.away });
+    if (res.rowsAffected) {
+      p.away = active ? 0 : 1;
+      await addMessage(lobby, active ? 'back' : 'away', { userId: p.user_id, name: p.name });
+    }
+  }
+}
+
+async function dropPlayers(lobby, gone) {
+  for (const p of gone) {
+    const res = await exec('DELETE FROM players WHERE id = :pid', { pid: p.id });
+    if (res.rowsAffected) await addMessage(lobby, 'left', { userId: p.user_id, name: p.name });
+  }
+}
+
 async function finish(lobby) {
   const t = now();
   return transition(lobby, { phase: 'final', drawer_id: null, word: null, choices: null, phase_start: t, deadline: null });
@@ -208,6 +241,7 @@ export async function advance(lobby) {
     const t = now();
     const players = await loadPlayers(lobby.id);
     const active = players.filter((p) => isActive(p, t));
+    await trackPresence(lobby, players, t);
 
     // Хозяин пропал — передаём роль самому раннему активному игроку.
     const host = players.find((p) => p.user_id === lobby.host_id);
@@ -223,14 +257,14 @@ export async function advance(lobby) {
     if (lobby.phase === 'lobby' || lobby.phase === 'final') {
       const gone = players.filter((p) => p.last_seen < t - LOBBY_DROP_MS);
       if (gone.length) {
-        await exec('DELETE FROM players WHERE lobby_id = :id AND last_seen < :cut', { id: lobby.id, cut: t - LOBBY_DROP_MS });
+        await dropPlayers(lobby, gone);
         continue;
       }
       return { lobby, players };
     }
 
     if (inGame && active.length < MIN_PLAYERS) {
-      next = await finish(lobby);
+      next = await abort(lobby, players, t);
     } else if (lobby.phase === 'pick') {
       const drawer = players.find((p) => p.user_id === lobby.drawer_id);
       if (!drawer || !isActive(drawer, t)) next = await startTurn(lobby, players, lobby.turn + 1);
@@ -277,10 +311,12 @@ export async function leaveAll(userId, exceptLobbyId = 0) {
 }
 
 export async function leave(lobbyId, userId) {
+  const me = await one('SELECT name FROM players WHERE lobby_id = :id AND user_id = :u', { id: lobbyId, u: userId });
   await exec('DELETE FROM players WHERE lobby_id = :id AND user_id = :u', { id: lobbyId, u: userId });
   const left = await one('SELECT count(*) AS n FROM players WHERE lobby_id = :id', { id: lobbyId });
   if (!left || !left.n) return purgeLobby(lobbyId);
   const lobby = await loadLobbyById(lobbyId);
+  if (lobby && me) await addMessage(lobby, 'left', { userId, name: me.name });
   if (lobby && lobby.host_id === userId) {
     const heir = await one('SELECT user_id FROM players WHERE lobby_id = :id ORDER BY seat LIMIT 1', { id: lobbyId });
     await transition(lobby, { host_id: heir.user_id });
@@ -331,7 +367,7 @@ export async function joinLobby(user, code) {
   await exec(
     `INSERT INTO players (lobby_id, user_id, name, photo, seat, score, gained, last_seen, joined_at)
      VALUES (:lobbyId, :u, :name, :photo, :seat, 0, 0, :t, :t)
-     ON CONFLICT (lobby_id, user_id) DO UPDATE SET last_seen = :t`,
+     ON CONFLICT (lobby_id, user_id) DO UPDATE SET last_seen = :t, away = 0`,
     { lobbyId: lobby.id, u: user.id, name: user.name, photo: user.photo, seat, t },
   );
   await addMessage(cur, 'join', { userId: user.id, name: user.name });
@@ -363,14 +399,16 @@ export async function startGame(user, code) {
   if (lobby.phase !== 'lobby' && lobby.phase !== 'final') fail('IN_PROGRESS', 'Игра уже идёт');
   const t = now();
   const active = players.filter((p) => isActive(p, t));
-  if (active.length < MIN_PLAYERS) fail('NOT_ENOUGH', 'Нужно хотя бы 2 игрока');
+  if (active.length < MIN_PLAYERS) fail('NOT_ENOUGH', 'Нужно хотя бы 2 игрока в сети');
+  // Кто не в сети в момент старта — выбывает из комнаты.
+  await dropPlayers(lobby, players.filter((p) => !isActive(p, t)));
   const order = active.map((p) => p.user_id);
   const started = await transition(lobby, {
     phase: 'lobby', game: lobby.game + 1, turn: 0,
     turn_order: JSON.stringify(order), turn_total: order.length * lobby.rounds,
   });
   if (!started) fail('CONFLICT', 'Попробуйте ещё раз');
-  await exec('UPDATE players SET score = 0, gained = 0, guessed_at = NULL WHERE lobby_id = :id', { id: lobby.id });
+  await exec('UPDATE players SET score = 0, gained = 0, guessed_at = NULL, away = 0 WHERE lobby_id = :id', { id: lobby.id });
   await startTurn(started, await loadPlayers(lobby.id), 0);
 }
 
@@ -465,6 +503,10 @@ export function view(lobby, players, userId) {
     state.mask = maskWord(lobby, t);
   }
   if (lobby.phase === 'reveal') state.result = parse(lobby.last_result, null);
+  if (lobby.phase === 'lobby') {
+    const last = parse(lobby.last_result, null);
+    if (last && last.aborted) state.notice = { aborted: true, names: last.names || [] };
+  }
   return state;
 }
 
