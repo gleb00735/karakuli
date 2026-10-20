@@ -31,4 +31,5 @@ jobs:
       - name: Рассылка
         run: |
           KEY=$(grep REMINDER_KEY tgcloud/lib/secrets.js | grep -o "'[0-9a-f]*'" | tr -d "'")
+          echo "::add-mask::$KEY"  # tgcloud run печатает аргументы — прячем ключ в журнале
           npx tgcloud run endpoints/sendReminders "{ key: '$KEY' }"
