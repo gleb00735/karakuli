@@ -147,3 +147,15 @@ export const scores = table('scores', {
   userIdx: uniqueIndex('uidx_scores_game_user').on(t.game, t.userId),
   bestIdx: index('idx_scores_game_best').on(t.game, t.best),
 }));
+
+// Подписчики на ежедневные напоминания о Mini App.
+export const subscribers = table('subscribers', {
+  id:       integer('id').primaryKey({ autoIncrement: true }),
+  userId:   integer('user_id').notNull(),
+  name:     text('name'),
+  enabled:  integer('enabled').notNull().default(1),
+  lastSent: integer('last_sent').notNull().default(0),
+  created:  integer('created_at').notNull(),
+}, (t) => ({
+  userIdx: uniqueIndex('uidx_subscribers_user').on(t.userId),
+}));

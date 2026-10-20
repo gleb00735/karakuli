@@ -378,3 +378,39 @@ async function wait0(ms, who, code) {
   assert.equal((await ep('score', { game: '2048', score: 100, extra: 100 }, 83)).error, 'BAD_SCORE');
   console.log('SCORES OK');
 }
+
+// ─── Напоминания ───────────────────────────────────────────────────────────
+{
+  const { api } = await import('./sdk/index.mjs');
+  const msg = (await import('../tgcloud/handlers/message.js')).default;
+  const cb = (await import('../tgcloud/handlers/callback_query.js')).default;
+  const { REMINDER_KEY } = await import('../tgcloud/lib/secrets.js');
+  // /start подписывает; заблокировавший бота (чат 403) отпишется сам при рассылке.
+  for (const id of [91, 92]) await msg({ chat: { id, type: 'private' }, from: { id, first_name: 'U' + id }, text: '/start' }, {});
+  await ep('reminders', { enabled: true }, 403); // потом заблокирует бота
+  await msg({ chat: { id: 92, type: 'private' }, from: { id: 92 }, text: '/stop' }, {});
+  // Подписка из Mini App.
+  assert.deepEqual(await ep('reminders', { enabled: true }, 93), { enabled: true });
+  assert.equal((await ep('sendReminders', { key: 'wrong' }, 1)).error, 'FORBIDDEN');
+  api.sent.length = 0;
+  let r = await ep('sendReminders', { key: REMINDER_KEY }, 1);
+  assert.deepEqual(r, { sent: 2, blocked: 1, failed: 0, left: 0 });
+  const to = api.sent.filter((m) => m.method === 'sendMessage').map((m) => m.params.chat_id).sort();
+  assert.deepEqual(to, [91, 93]);
+  // Второй запуск в тот же день — никому повторно.
+  r = await ep('sendReminders', { key: REMINDER_KEY }, 1);
+  assert.equal(r.sent, 0);
+  // Назавтра — снова.
+  skip(24 * 3600_000);
+  r = await ep('sendReminders', { key: REMINDER_KEY }, 1);
+  assert.equal(r.sent, 2);
+  // Кнопка «Не напоминать».
+  await cb({ id: 'q1', data: 'rem_off', from: { id: 91, first_name: 'U91' }, message: { chat: { id: 91 }, message_id: 5 } }, {});
+  assert.deepEqual(await ep('reminders', {}, 91), { enabled: false });
+  // /start после отписки не включает обратно, /remind — включает.
+  await msg({ chat: { id: 92, type: 'private' }, from: { id: 92 }, text: '/start' }, {});
+  assert.deepEqual(await ep('reminders', {}, 92), { enabled: false });
+  await msg({ chat: { id: 92, type: 'private' }, from: { id: 92 }, text: '/remind' }, {});
+  assert.deepEqual(await ep('reminders', {}, 92), { enabled: true });
+  console.log('REMINDERS OK');
+}

@@ -1031,3 +1031,6 @@ img { display: block; }
 .g-tile[data-len="3"] .g-num { font-size: clamp(19px, 7vw, 34px); }
 .g-tile[data-len="4"] .g-num { font-size: clamp(16px, 5.6vw, 28px); }
 .g-tile[data-len="5"] .g-num, .g-tile[data-len="6"] .g-num { font-size: clamp(13px, 4.4vw, 22px); }
+.home-top { gap: 10px; }
+.bell { flex: none; padding: 8px 12px; border-radius: 99px; background: var(--card); box-shadow: var(--shadow); font-weight: 800; font-size: 13.5px; color: var(--ink-3); }
+.bell.on { color: var(--ink); box-shadow: inset 0 0 0 2px var(--mint), var(--shadow); }

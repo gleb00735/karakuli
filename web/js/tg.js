@@ -101,3 +101,11 @@ export function copy(text) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text).then(() => true, () => false);
   return Promise.resolve(false);
 }
+
+// Разрешение боту писать пользователю (нужно для напоминаний, если он
+// не запускал бота через /start).
+export function requestWriteAccess() {
+  if (!tg || !ver('6.9')) return Promise.resolve(true);
+  if (tg.initDataUnsafe.user && tg.initDataUnsafe.user.allows_write_to_pm) return Promise.resolve(true);
+  return new Promise((resolve) => tg.requestWriteAccess((ok) => resolve(!!ok)));
+}

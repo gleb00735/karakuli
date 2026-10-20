@@ -1,0 +1,34 @@
+# Ежедневные напоминания о Mini App.
+#
+# У Telegram Serverless нет своего расписания, поэтому раз в день GitHub
+# запускает рассылку: забирает код бота из облака (вместе с секретами,
+# которых нет в git) и выполняет endpoints/sendReminders с ключом рассылки.
+#
+# Нужен секрет репозитория TGCLOUD_TOKEN — токен CLI Access из @BotFather
+# (бот → Serverless → CLI Access).
+name: Напоминания
+
+on:
+  schedule:
+    - cron: '0 15 * * *'   # 18:00 по Москве
+    - cron: '40 15 * * *'  # добор: за один запуск уходит до 150 сообщений
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Код бота из облака
+        run: npx tgcloud pull --force
+      - name: Рассылка
+        run: |
+          KEY=$(grep REMINDER_KEY tgcloud/lib/secrets.js | grep -o "'[0-9a-f]*'" | tr -d "'")
+          npx tgcloud run endpoints/sendReminders "{ key: '$KEY' }"

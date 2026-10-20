@@ -2,7 +2,8 @@
 
 import { h, svg, icon, avatar, sheet, toast } from '../ui.js';
 import { GAMES } from './lobby.js';
-import { me, canScan, scanQr, parseCode, haptic } from '../tg.js';
+import { me, canScan, scanQr, parseCode, haptic, requestWriteAccess } from '../tg.js';
+import { call } from '../api.js';
 
 const HERO = `
 <svg viewBox="0 0 320 236" class="doodle">
@@ -38,6 +39,7 @@ export class HomeScreen {
     this.el = h('div.screen', null,
       h('div.home-top', null,
         h('div.me-chip', null, avatar({ id: me.id, name: me.first_name, photo: me.photo_url }, { size: 32 }), h('span', null, me.first_name)),
+        this.bell = h('button.bell', { onclick: () => this.toggleReminders(), 'aria-label': 'Напоминания' }),
       ),
       h('div.logo', null, word, svg(UNDERLINE)),
       h('div.tagline.center', null, 'Игры с друзьями прямо в Telegram'),
@@ -62,6 +64,30 @@ export class HomeScreen {
         ),
       ),
     );
+    this.loadBell();
+  }
+
+  // Колокольчик: ежедневные напоминания от бота.
+  renderBell(on) {
+    this.remindersOn = on;
+    this.bell.className = 'bell' + (on ? ' on' : '');
+    this.bell.textContent = on ? '🔔 Напоминания' : '🔕 Напоминания';
+  }
+
+  async toggleReminders() {
+    haptic.tap();
+    const want = !this.remindersOn;
+    if (want && !(await requestWriteAccess())) {
+      toast('Без разрешения писать бот не сможет напоминать', 'warn');
+      return;
+    }
+    try {
+      const r = await call('reminders', { enabled: want });
+      this.renderBell(r.enabled);
+      toast(r.enabled ? 'Будем напоминать раз в день 🔔' : 'Напоминания выключены', r.enabled ? 'ok' : '', 2000);
+    } catch (e) {
+      toast(e.message, 'err');
+    }
   }
 
   pickGame() {
@@ -84,6 +110,11 @@ export class HomeScreen {
       card('who'),
       card('ttt'),
     ));
+  }
+
+  loadBell() {
+    this.renderBell(false);
+    call('reminders').then((r) => this.renderBell(r.enabled), () => { this.bell.style.display = 'none'; });
   }
 
   scan() {
