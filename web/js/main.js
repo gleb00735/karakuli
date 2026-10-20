@@ -12,6 +12,7 @@ import { CheckersScreen } from './screens/checkers.js';
 import { RaceScreen } from './screens/race.js';
 import { WhoScreen } from './screens/who.js';
 import { TttScreen } from './screens/ttt.js';
+import { G2048Screen } from './screens/g2048.js';
 import { Voice } from './voice.js';
 
 setup();
@@ -54,7 +55,14 @@ function showHome() {
   voice.reset();
   closingGuard(false);
   setBack(null);
-  mount(new HomeScreen({ create, join }), 'home');
+  mount(new HomeScreen({ create, join, solo: showSolo }), 'home');
+}
+
+// Одиночные игры: без комнаты и опросов сервера.
+function showSolo(game) {
+  stopLoop();
+  setBack(showHome);
+  if (game === '2048') mount(new G2048Screen({ back: showHome }), 'solo');
 }
 
 function showLoading() {

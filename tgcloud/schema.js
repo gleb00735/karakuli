@@ -131,3 +131,19 @@ export const racePos = table('race_pos', {
 }, (t) => ({
   carIdx: uniqueIndex('uidx_race_pos').on(t.lobbyId, t.userId),
 }));
+
+// Рекорды одиночных игр: лучший результат каждого игрока в каждой игре.
+export const scores = table('scores', {
+  id:      integer('id').primaryKey({ autoIncrement: true }),
+  game:    text('game').notNull(),
+  userId:  integer('user_id').notNull(),
+  name:    text('name').notNull(),
+  photo:   text('photo'),
+  best:    integer('best').notNull(),
+  // Дополнительная величина результата (в 2048 — самая большая плитка).
+  extra:   integer('extra').notNull().default(0),
+  updated: integer('updated_at').notNull(),
+}, (t) => ({
+  userIdx: uniqueIndex('uidx_scores_game_user').on(t.game, t.userId),
+  bestIdx: index('idx_scores_game_best').on(t.game, t.best),
+}));

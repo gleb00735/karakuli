@@ -362,3 +362,19 @@ async function wait0(ms, who, code) {
   assert.equal(s.state.ttt.winner, 'draw');
   console.log('TTT OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
 }
+
+// ─── Рекорды ───────────────────────────────────────────────────────────────
+{
+  let r = await ep('score', { game: '2048', score: 2000, extra: 256 }, 81);
+  assert.equal(r.me.best, 2000);
+  r = await ep('score', { game: '2048', score: 1500, extra: 128 }, 81);
+  assert.equal(r.me.best, 2000, 'худший результат не затирает рекорд');
+  assert.equal(r.top[0].extra, 256);
+  await ep('score', { game: '2048', score: 5000, extra: 512 }, 82);
+  r = await ep('score', { game: '2048' }, 81);
+  assert.equal(r.me.rank, 2);
+  assert.deepEqual(r.top.map((x) => x.id), [82, 81]);
+  assert.equal((await ep('score', { game: '2048', score: 999999, extra: 8 }, 83)).error, 'BAD_SCORE');
+  assert.equal((await ep('score', { game: '2048', score: 100, extra: 100 }, 83)).error, 'BAD_SCORE');
+  console.log('SCORES OK');
+}

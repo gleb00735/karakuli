@@ -22,8 +22,16 @@ const HERO = `
 
 const UNDERLINE = `<svg class="underline" viewBox="0 0 210 22"><path d="M6 14c30-8 60-9 92-6s70 6 106-4" fill="none" stroke="#ff5d5d" stroke-width="6" stroke-linecap="round"/></svg>`;
 
+// Рекорд 2048 из сохранённой партии — показываем на карточке.
+function bestText() {
+  try {
+    const best = (JSON.parse(localStorage.getItem('karakuli-2048') || 'null') || {}).best;
+    return best ? `рекорд ${best.toLocaleString('ru-RU')}` : 'играть';
+  } catch { return 'играть'; }
+}
+
 export class HomeScreen {
-  constructor({ create, join }) {
+  constructor({ create, join, solo }) {
     this.join = join;
     this.create = create;
     const word = h('span.logo-word', null, [...'Каракули'].map((ch) => h('span.l', null, ch)));
@@ -34,10 +42,16 @@ export class HomeScreen {
       h('div.logo', null, word, svg(UNDERLINE)),
       h('div.tagline.center', null, 'Игры с друзьями прямо в Telegram'),
       h('div.hero', null, svg(HERO), h('div.bubble', null, 'Это домик?'), h('div.bubble.b2', null, 'В точку! +150')),
+      h('div.solo-title', null, 'Одному'),
+      h('button.solo-card', { onclick: () => { haptic.tap(); solo('2048'); } },
+        h('div.solo-tile', null, '2048'),
+        h('div.gc-text', null, h('div.gc-title', null, '2048'), h('div.gc-sub', null, 'Сливайте плитки — соберите 2048')),
+        h('div.gc-players', null, bestText()),
+      ),
       h('div.steps', null,
         h('div.step', null, h('b', null, '1'), 'Создай комнату'),
         h('div.step', null, h('b', null, '2'), 'Друзья сканируют QR'),
-        h('div.step', null, h('b', null, '3'), 'Каракули или мафия'),
+        h('div.step', null, h('b', null, '3'), 'Выбери игру'),
       ),
       h('div.spacer'),
       h('div.home-actions', null,
