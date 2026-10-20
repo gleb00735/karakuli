@@ -17,16 +17,17 @@ import { MAFIA_MIN, MAFIA_MAX, startMafia, mafiaAdvance, mafiaAct, mafiaChat, ma
 import { startCheckers, checkersAdvance, checkersAct, checkersView } from './checkers.js';
 import { RACE_MIN, RACE_MAX, TRACKS, startRace, raceAdvance, pushRacePos, raceView } from './race.js';
 import { WHO_MIN, WHO_MAX, DECK_KEYS, startWho, whoAdvance, whoAct, whoView } from './who.js';
+import { VARIANTS, startTtt, tttAdvance, tttAct, tttView } from './ttt.js';
 
 export { begin, caller, fail, loadLobby, pushRacePos };
 
 export const MAX_PLAYERS = 3;
 export const MIN_PLAYERS = 2;
-const MODES = ['draw', 'mafia', 'checkers', 'race', 'who'];
-const LIMITS = { draw: [MIN_PLAYERS, MAX_PLAYERS], mafia: [MAFIA_MIN, MAFIA_MAX], checkers: [2, 2], race: [RACE_MIN, RACE_MAX], who: [WHO_MIN, WHO_MAX] };
-const GAME_TITLES = { draw: '«Каракули»', mafia: '«Мафию»', checkers: '«Шашки»', race: '«Гонки»', who: '«Кто я?»' };
-// Фазы партий, которые ведут модули игр (мафия, шашки, гонки, «Кто я?»).
-const ADVANCERS = { m_: mafiaAdvance, c_: checkersAdvance, r_: raceAdvance, w_: whoAdvance };
+const MODES = ['draw', 'mafia', 'checkers', 'race', 'who', 'ttt'];
+const LIMITS = { draw: [MIN_PLAYERS, MAX_PLAYERS], mafia: [MAFIA_MIN, MAFIA_MAX], checkers: [2, 2], race: [RACE_MIN, RACE_MAX], who: [WHO_MIN, WHO_MAX], ttt: [2, 2] };
+const GAME_TITLES = { draw: '«Каракули»', mafia: '«Мафию»', checkers: '«Шашки»', race: '«Гонки»', who: '«Кто я?»', ttt: '«Крестики-нолики»' };
+// Фазы партий, которые ведут модули игр (мафия, шашки, гонки, «Кто я?», крестики-нолики).
+const ADVANCERS = { m_: mafiaAdvance, c_: checkersAdvance, r_: raceAdvance, w_: whoAdvance, t_: tttAdvance };
 const minPlayers = (lobby) => (LIMITS[lobby.mode] || LIMITS.draw)[0];
 const maxPlayers = (lobby) => (LIMITS[lobby.mode] || LIMITS.draw)[1];
 export const PICK_MS = 15_000;
@@ -317,7 +318,7 @@ export async function enter(user, code) {
   return advance(lobby);
 }
 
-export async function updateSettings(user, code, { rounds, drawTime, mode, track, deck }) {
+export async function updateSettings(user, code, { rounds, drawTime, mode, track, deck, variant }) {
   const { lobby } = await enter(user, code);
   if (lobby.host_id !== user.id) fail('NOT_HOST', 'Настройки меняет хозяин комнаты');
   if (lobby.phase !== 'lobby' && lobby.phase !== 'final') fail('IN_PROGRESS', 'Игра уже идёт');
@@ -326,6 +327,7 @@ export async function updateSettings(user, code, { rounds, drawTime, mode, track
   if (DRAW_TIME_OPTIONS.includes(drawTime)) changes.draw_time = drawTime;
   if (TRACKS.includes(track)) changes.track = track;
   if (DECK_KEYS.includes(deck)) changes.deck = deck;
+  if (VARIANTS[variant]) changes.variant = String(variant);
   if (MODES.includes(mode) && mode !== lobby.mode) {
     const n = (await loadPlayers(lobby.id)).length;
     if (n > LIMITS[mode][1]) fail('TOO_MANY', `В ${GAME_TITLES[mode]} играют до ${LIMITS[mode][1]} человек, а в комнате ${n}`);
@@ -350,6 +352,7 @@ export async function startGame(user, code) {
     const started = lobby.mode === 'mafia' ? await startMafia(lobby, ids)
       : lobby.mode === 'checkers' ? await startCheckers(lobby, ids)
       : lobby.mode === 'who' ? await startWho(lobby, ids, lobby.deck)
+      : lobby.mode === 'ttt' ? await startTtt(lobby, ids, lobby.variant)
       : await startRace(lobby, ids, lobby.track);
     if (!started) fail('CONFLICT', 'Попробуйте ещё раз');
     return;
@@ -425,6 +428,11 @@ export async function mafiaAction(user, code, kind, target) {
 export async function checkersAction(user, code, kind, path) {
   const { lobby, players } = await enter(user, code);
   await checkersAct(lobby, players, user, kind, path);
+}
+
+export async function tttAction(user, code, kind, cell) {
+  const { lobby, players } = await enter(user, code);
+  await tttAct(lobby, players, user, kind, cell);
 }
 
 export async function whoAction(user, code, kind, args) {
@@ -533,7 +541,9 @@ export async function view(lobby, players, userId) {
   if (lobby.mode === 'checkers' && (lobby.phase.startsWith('c_') || lobby.phase === 'final')) state.checkers = checkersView(lobby, userId);
   if (lobby.mode === 'race' && (lobby.phase.startsWith('r_') || lobby.phase === 'final')) state.race = await raceView(lobby, userId);
   if (lobby.mode === 'who' && (lobby.phase.startsWith('w_') || lobby.phase === 'final')) state.who = await whoView(lobby, userId);
+  if (lobby.mode === 'ttt' && (lobby.phase.startsWith('t_') || lobby.phase === 'final')) state.ttt = tttView(lobby, userId);
   state.track = lobby.track;
+  state.variant = lobby.variant;
   state.deck = lobby.deck;
   if (lobby.phase === 'lobby') {
     const last = parse(lobby.last_result, null);

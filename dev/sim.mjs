@@ -320,3 +320,45 @@ async function wait0(ms, who, code) {
   void order;
   console.log('WHO OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
 }
+
+// ─── Крестики-нолики ───────────────────────────────────────────────────────
+{
+  const { winLine } = await import('../tgcloud/lib/ttt.js');
+  assert.deepEqual(winLine('xxx......', 3, 3, 1), [0, 1, 2]);
+  assert.deepEqual(winLine('x...x...x', 3, 3, 4), [0, 4, 8]);
+  assert.deepEqual(winLine('..x.x.x..', 3, 3, 6), [2, 4, 6]);
+  assert.equal(winLine('xx.o.....', 3, 3, 0), null);
+
+  const [X, Y] = [71, 72];
+  const code = (await ep('createLobby', { mode: 'ttt' }, X)).state.code;
+  await ep('joinLobby', { code }, Y);
+  let s = await ep('startGame', { code }, X);
+  assert.equal(s.state.phase, 't_play');
+  let t = s.state.ttt;
+  const px = t.x, po = t.o;
+  assert.equal((await ep('tttAct', { code, kind: 'move', cell: 4 }, po)).error, 'NOT_YOUR_TURN');
+  // Крестики собирают диагональ.
+  for (const [who, c] of [[px, 0], [po, 1], [px, 4], [po, 2]]) await ep('tttAct', { code, kind: 'move', cell: c }, who);
+  assert.equal((await ep('tttAct', { code, kind: 'move', cell: 4 }, px)).error, 'TAKEN');
+  s = await ep('tttAct', { code, kind: 'move', cell: 8 }, px);
+  assert.equal(s.state.phase, 'final');
+  assert.equal(s.state.ttt.winner, 'x');
+  assert.deepEqual(s.state.ttt.line, [0, 4, 8]);
+  assert.deepEqual(s.state.ttt.score.find(([u]) => u === px), [px, 1]);
+  // Реванш на большом поле: знаки меняются, счёт сохраняется.
+  await ep('settings', { code, variant: 10 }, X);
+  s = await ep('startGame', { code }, X);
+  t = s.state.ttt;
+  assert.equal(t.size, 10);
+  assert.equal(t.x, po);
+  assert.deepEqual(t.score.find(([u]) => u === px), [px, 1]);
+  // Ничья на 3×3: x o x / x o o / o x x
+  s = await ep('tttAct', { code, kind: 'resign' }, po);
+  await ep('settings', { code, variant: 3 }, X);
+  s = await ep('startGame', { code }, X);
+  t = s.state.ttt;
+  const seq = [0, 1, 2, 4, 3, 5, 7, 6, 8];
+  for (let k = 0; k < seq.length; k++) { s = await ep('tttAct', { code, kind: 'move', cell: seq[k] }, k % 2 ? t.o : t.x); if (s.error) console.log('move', k, s.error, s.msg); }
+  assert.equal(s.state.ttt.winner, 'draw');
+  console.log('TTT OK', s.messages.filter((m) => m.kind === 'm').map((m) => m.body).join(' | '));
+}

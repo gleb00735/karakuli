@@ -19,6 +19,7 @@ export const GAMES = {
   checkers: { title: 'Шашки', sub: 'Русские шашки один на один', players: '2 игрока', emoji: '⚪' },
   race: { title: 'Гонки', sub: 'Заезд на 3 круга', players: '2–8 игроков', emoji: '🏎️' },
   who: { title: 'Кто я?', sub: 'Угадай, кто написан у тебя на лбу', players: '3–8 игроков', emoji: '🤔' },
+  ttt: { title: 'Крестики-нолики', sub: '3×3 или 10×10 — пять в ряд', players: '2 игрока', emoji: '❌' },
 };
 
 export function qrCard(code) {
@@ -107,7 +108,7 @@ export class LobbyScreen {
 
   update(s) {
     const isHost = s.hostId === s.me;
-    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active, p.voice]), this.voice.mode, s.hostId, s.rounds, s.drawTime, s.mode, s.track, s.deck, s.notice, this.noticeHidden]);
+    const key = JSON.stringify([s.players.map((p) => [p.id, p.name, p.active, p.voice]), this.voice.mode, s.hostId, s.rounds, s.drawTime, s.mode, s.track, s.deck, s.variant, s.notice, this.noticeHidden]);
     if (key === this.key) return;
     const prev = this.key ? JSON.parse(this.key)[0].length : s.players.length;
     if (s.players.length > prev) haptic.ok();
@@ -163,6 +164,12 @@ export class LobbyScreen {
           h('div.setting', null, h('div.lbl', null, 'На рисунок'),
             seg([60, 80, 100], s.drawTime, (v) => v + ' с', (v) => this.actions.settings({ drawTime: v }))),
         ],
+        s.mode === 'ttt' && h('div.setting', null, h('div.lbl', null, 'Поле'),
+          seg(['3', '10'], s.variant, (v) => (v === '3' ? '3×3' : '10×10'), (v) => this.actions.settings({ variant: v }))),
+        s.mode === 'ttt' && h('div.mafia-info', null,
+          h('div', null, s.variant === '10' ? 'Большое поле: побеждает тот, кто первым соберёт пять в ряд.' : 'Классика: три в ряд по горизонтали, вертикали или диагонали.'),
+          h('div.faint.small', null, 'Крестики ходят первыми, в реванше знаки меняются. Счёт серии сохраняется.'),
+        ),
         s.mode === 'who' && h('div.setting.wide', null, h('div.lbl', null, 'Колода'),
           h('div.game-grid', null, Object.entries(DECK_NAMES).map(([v, name]) => h('button.gg' + (v === s.deck ? '.on' : ''), {
             disabled: !isHost && v !== s.deck,

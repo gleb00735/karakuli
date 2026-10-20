@@ -939,3 +939,38 @@ img { display: block; }
 .wh-guess { height: 54px; border: 0; outline: 0; border-radius: 16px; padding: 0 16px; background: var(--card); box-shadow: inset 0 0 0 2px var(--violet); font-weight: 800; font-size: 17px; -webkit-user-select: text; user-select: text; }
 .wh-final-char { flex: none; max-width: 45%; font: 700 18px/1.1 var(--hand); color: var(--violet); text-align: right; }
 .m-bottom .row .btn.small { flex: 1; }
+
+/* ─── Крестики-нолики ─────────────────────────────────────── */
+.tt-holder { position: relative; }
+.tt-board {
+  --n: 3;
+  width: 100%; height: 100%;
+  display: grid; grid-template-columns: repeat(var(--n), 1fr); grid-template-rows: repeat(var(--n), 1fr);
+  gap: 8px; padding: 8px;
+  background: var(--card); border-radius: 26px; box-shadow: var(--shadow-lg);
+}
+.tt-board.big { gap: 3px; padding: 6px; border-radius: 18px; }
+.tt-cell {
+  position: relative; border-radius: 16px; background: var(--bg-2);
+  box-shadow: inset 0 0 0 2px var(--line); transition: background .15s, transform .1s;
+}
+.tt-board.big .tt-cell { border-radius: 5px; box-shadow: inset 0 0 0 1px var(--line); }
+.tt-cell:not(:disabled):active { transform: scale(.94); }
+.tt-cell:not(:disabled) { cursor: pointer; }
+.tt-cell.last { background: color-mix(in srgb, var(--sun) 22%, var(--bg-2)); }
+.tt-cell.win { background: color-mix(in srgb, var(--mint) 30%, var(--bg-2)); }
+.tt-mark { position: absolute; inset: 8%; width: 84%; height: 84%; }
+.tt-mark path { fill: none; stroke-width: 12; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: tt-draw .28s cubic-bezier(.4, 0, .2, 1) forwards; }
+.tt-board.big .tt-mark path { stroke-width: 14; }
+.tt-mark.x path { stroke: var(--coral); }
+.tt-mark.o path { stroke: var(--violet); }
+@keyframes tt-draw { to { stroke-dashoffset: 0; } }
+.tt-line { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); pointer-events: none; opacity: 0; }
+.tt-line.on { opacity: 1; }
+.tt-line line { stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.tt-line.on line { animation: tt-draw .45s .1s ease-out forwards; }
+.tt-badge { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; font-size: 11px; font-weight: 900; color: #fff; }
+.tt-badge.x { background: var(--coral); }
+.tt-badge.o { background: var(--violet); }
+.tt-score { margin-top: 14px; font-weight: 800; color: var(--ink-2); }
+.game-card.ttt .gc-emoji { font-size: 30px; }

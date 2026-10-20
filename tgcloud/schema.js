@@ -25,14 +25,17 @@ export const lobbies = table('lobbies', {
   phaseStart:  integer('phase_start'),
   deadline:    integer('deadline'),
   lastResult:  text('last_result'),
-  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия», 'checkers' — «Шашки», 'race' — «Гонки», 'who' — «Кто я?».
+  // Какая игра выбрана в комнате: 'draw' — «Каракули», 'mafia' — «Мафия», 'checkers' — «Шашки», 'race' — «Гонки», 'who' — «Кто я?»,
+  // 'ttt' — «Крестики-нолики».
   mode:        text('mode').notNull().default('draw'),
-  // Состояние партии в мафию или шашки (роли и события / доска и ход) — JSON.
+  // Состояние партии в мафию, шашки, гонки, «Кто я?» или крестики-нолики — JSON.
   mstate:      text('mstate'),
   // Трасса для «Гонок».
   track:       text('track').notNull().default('ring'),
   // Колода для «Кто я?»: mix, chars, famous, animals, jobs.
   deck:        text('deck').notNull().default('mix'),
+  // Поле для «Крестиков-ноликов»: '3' — 3×3, '10' — 10×10, пять в ряд.
+  variant:     text('variant').notNull().default('3'),
   created:     integer('created_at').notNull(),
   updated:     integer('updated_at').notNull(),
 }, (t) => ({

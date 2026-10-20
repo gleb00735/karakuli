@@ -11,6 +11,7 @@ import { MafiaScreen } from './screens/mafia.js';
 import { CheckersScreen } from './screens/checkers.js';
 import { RaceScreen } from './screens/race.js';
 import { WhoScreen } from './screens/who.js';
+import { TttScreen } from './screens/ttt.js';
 import { Voice } from './voice.js';
 
 setup();
@@ -66,6 +67,7 @@ function screenKindFor(s) {
   if (s.phase.startsWith('c_') || (s.phase === 'final' && s.mode === 'checkers')) return 'checkers';
   if (s.phase.startsWith('r_') || (s.phase === 'final' && s.mode === 'race')) return 'race';
   if (s.phase.startsWith('w_') || (s.phase === 'final' && s.mode === 'who')) return 'who';
+  if (s.phase.startsWith('t_') || (s.phase === 'final' && s.mode === 'ttt')) return 'ttt';
   if (s.phase === 'final') return 'final';
   return 'game';
 }
@@ -76,10 +78,10 @@ function render() {
   const kind = screenKindFor(s);
   if (kind !== room.screenKind || (kind === 'game' && room.screen.roundNo !== s.roundNo)) {
     const ctx = { room, actions, serverNow, voice };
-    const Screen = { lobby: LobbyScreen, final: FinalScreen, mafia: MafiaScreen, checkers: CheckersScreen, race: RaceScreen, who: WhoScreen, game: GameScreen }[kind];
+    const Screen = { lobby: LobbyScreen, final: FinalScreen, mafia: MafiaScreen, checkers: CheckersScreen, race: RaceScreen, who: WhoScreen, ttt: TttScreen, game: GameScreen }[kind];
     mount(new Screen(ctx), kind);
   }
-  closingGuard(kind === 'game' || (['mafia', 'checkers', 'race', 'who'].includes(kind) && s.phase !== 'final'));
+  closingGuard(kind === 'game' || (['mafia', 'checkers', 'race', 'who', 'ttt'].includes(kind) && s.phase !== 'final'));
   room.screen.update(s);
 }
 
@@ -242,7 +244,7 @@ function enterRoom(res) {
 }
 
 async function leaveRoom() {
-  const inGame = room.state && (/^[mcrw]_/.test(room.state.phase) || screenKindFor(room.state) === 'game');
+  const inGame = room.state && (/^[mcrwt]_/.test(room.state.phase) || screenKindFor(room.state) === 'game');
   if (inGame && !(await confirm('Выйти из игры? Партия продолжится без вас.'))) return;
   const code = room.code;
   showHome();
@@ -299,6 +301,7 @@ const actions = {
   toLobby: () => act('toLobby'),
   checkers: (kind, path) => act('checkersAct', { kind, path }),
   who: (kind, args = {}) => act('whoAct', { kind, ...args }),
+  ttt: (kind, cell) => act('tttAct', { kind, cell }),
   pick: (index) => act('pickWord', { index }),
   guess: (text) => act('guess', { text }),
   flush: kick,
